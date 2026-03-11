@@ -19,16 +19,18 @@ export default function Home() {
 
   const [search, setSearch] = useState("");
   const [serviceFilter, setServiceFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-
-  const [sortField, setSortField] = useState<keyof InventoryItem | null>(null);
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
 
+  const [selected, setSelected] = useState<string[]>([]);
+
+  const [command, setCommand] = useState("");
+  const [logs, setLogs] = useState<string[]>([]);
+  const [runningCommand, setRunningCommand] = useState(false);
+
   /* =========================
-     FETCH
+     FETCH INVENTORY
   ========================= */
 
   const fetchInventory = async () => {
@@ -57,7 +59,7 @@ export default function Home() {
 
     fetchInventory();
 
-    const interval = setInterval(fetchInventory, 60000); // auto refresh
+    const interval = setInterval(fetchInventory, 60000);
 
     return () => clearInterval(interval);
 
@@ -67,8 +69,7 @@ export default function Home() {
      STATUS STYLE
   ========================= */
 
-  const healthyStates = ["running", "available"];
-  const warningStates = ["stopped", "terminated"];
+  const healthyStates = ["running", "available", "active"];
 
   const getStatusStyle = (status: string) => {
 
@@ -76,16 +77,12 @@ export default function Home() {
       return "bg-green-600/20 text-green-400";
     }
 
-    if (warningStates.includes(status)) {
-      return "bg-yellow-600/20 text-yellow-400";
-    }
-
     return "bg-red-600/20 text-red-400";
 
   };
 
   /* =========================
-     DASHBOARD METRICS
+     METRICS
   ========================= */
 
   const total = data.length;
@@ -94,72 +91,28 @@ export default function Home() {
     healthyStates.includes(i.status)
   ).length;
 
-  const stopped = data.filter(
-    (i) => !healthyStates.includes(i.status)
-  ).length;
+  const stopped = total - running;
 
   /* =========================
-     SORT
-  ========================= */
-
-  const handleSort = (field: keyof InventoryItem) => {
-
-    if (sortField === field) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDirection("asc");
-    }
-
-  };
-
-  const getSortArrow = (field: keyof InventoryItem) => {
-
-    if (sortField !== field) return "↕";
-
-    return sortDirection === "asc" ? "↑" : "↓";
-
-  };
-
-  /* =========================
-     FILTER + SORT
+     FILTER
   ========================= */
 
   const filteredData = useMemo(() => {
 
-    const filtered = data.filter((item) => {
+    return data.filter((item) => {
 
       const matchesSearch =
         item.name.toLowerCase().includes(search.toLowerCase()) ||
-        item.id.toLowerCase().includes(search.toLowerCase()) ||
-        item.service.toLowerCase().includes(search.toLowerCase()) ||
-        item.host.toLowerCase().includes(search.toLowerCase());
+        item.id.toLowerCase().includes(search.toLowerCase());
 
       const matchesService =
         serviceFilter === "all" || item.service === serviceFilter;
 
-      const matchesStatus =
-        statusFilter === "all" || item.status === statusFilter;
-
-      return matchesSearch && matchesService && matchesStatus;
+      return matchesSearch && matchesService;
 
     });
 
-    if (!sortField) return filtered;
-
-    return filtered.sort((a, b) => {
-
-      const aValue = a[sortField]?.toString().toLowerCase();
-      const bValue = b[sortField]?.toString().toLowerCase();
-
-      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
-      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
-
-      return 0;
-
-    });
-
-  }, [data, search, serviceFilter, statusFilter, sortField, sortDirection]);
+  }, [data, search, serviceFilter]);
 
   /* =========================
      PAGINATION
@@ -177,6 +130,8 @@ export default function Home() {
   ========================= */
 
   const exportCSV = () => {
+
+    if (!data.length) return;
 
     const headers = Object.keys(data[0]).join(",");
 
@@ -198,7 +153,92 @@ export default function Home() {
 
   };
 
+  /* =========================
+     SELECT EC2
+  ========================= */
+
+  const toggleSelect = (id: string) => {
+
+    if (selected.includes(id)) {
+
+      setSelected(selected.filter((i) => i !== id));
+
+    } else {
+
+      setSelected([...selected, id]);
+
+    }
+
+  };
+
+  /* =========================
+     RUN COMMAND MULTI EC2
+  ========================= */
+
+  const runCommand = async () => {
+
+    if (!command) return;
+
+    const instances = data
+      .filter((i) => selected.includes(i.id) && i.service === "EC2")
+      .map((i) => ({
+        instanceId: i.id,
+        accountId: i.accountId
+      }));
+
+    if (!instances.length) {
+      alert("Select EC2 instances first");
+      return;
+    }
+
+    setRunningCommand(true);
+    setLogs(["Starting execution...\n"]);
+
+    try {
+
+      const res = await fetch("/api/ec2/run-command", {
+
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify({
+          instances,
+          command
+        })
+
+      });
+
+      const result = await res.json();
+
+      const newLogs = result.map((r: any) =>
+
+        `[${r.accountId}] ${r.instanceId}
+
+${r.output || r.error}
+
+---------------------------`
+
+      );
+
+      setLogs(newLogs);
+
+    } catch (error) {
+
+      setLogs(["Execution failed"]);
+
+    } finally {
+
+      setRunningCommand(false);
+
+    }
+
+  };
+
   return (
+
     <main className="min-h-screen bg-gradient-to-br from-gray-950 to-gray-900 text-white p-10">
 
       <div className="max-w-7xl mx-auto">
@@ -207,7 +247,7 @@ export default function Home() {
 
         <div className="flex justify-between items-center mb-10">
 
-          <h1 className="text-4xl font-bold tracking-tight">
+          <h1 className="text-4xl font-bold">
             MC Inventory
           </h1>
 
@@ -233,7 +273,7 @@ export default function Home() {
 
         {/* DASHBOARD */}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+        <div className="grid grid-cols-3 gap-6 mb-10">
 
           <div className="bg-gray-800 p-6 rounded-xl">
             <p className="text-gray-400 text-sm">Total Resources</p>
@@ -241,12 +281,12 @@ export default function Home() {
           </div>
 
           <div className="bg-green-900/40 p-6 rounded-xl">
-            <p className="text-green-400 text-sm">Running / Healthy</p>
+            <p className="text-green-400 text-sm">Running</p>
             <h2 className="text-3xl font-bold">{running}</h2>
           </div>
 
           <div className="bg-red-900/40 p-6 rounded-xl">
-            <p className="text-red-400 text-sm">Stopped / Other</p>
+            <p className="text-red-400 text-sm">Stopped</p>
             <h2 className="text-3xl font-bold">{stopped}</h2>
           </div>
 
@@ -254,11 +294,11 @@ export default function Home() {
 
         {/* FILTERS */}
 
-        <div className="flex flex-wrap gap-4 mb-6">
+        <div className="flex gap-4 mb-6">
 
           <input
             type="text"
-            placeholder="Search resources..."
+            placeholder="Search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2"
@@ -269,27 +309,35 @@ export default function Home() {
             onChange={(e) => setServiceFilter(e.target.value)}
             className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2"
           >
-            <option value="all">All Services</option>
+
+            <option value="all">All</option>
             <option value="EC2">EC2</option>
             <option value="RDS">RDS</option>
             <option value="S3">S3</option>
-            <option value="ECS">ECS</option>
-            <option value="CloudFront">CloudFront</option>
-            <option value="LoadBalancer">LoadBalancer</option>
-            <option value="VPC">VPC</option>
-            <option value="Subnet">Subnet</option>
+
           </select>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2"
+        </div>
+
+        {/* COMMAND PANEL */}
+
+        <div className="bg-gray-800 p-6 rounded-xl mb-8">
+
+          <h2 className="text-lg mb-3">Run Command on Selected EC2</h2>
+
+          <textarea
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            placeholder="Example: docker ps"
+            className="w-full bg-gray-900 p-3 rounded mb-4"
+          />
+
+          <button
+            onClick={runCommand}
+            className="bg-purple-600 px-4 py-2 rounded"
           >
-            <option value="all">All Status</option>
-            <option value="running">Running</option>
-            <option value="available">Available</option>
-            <option value="stopped">Stopped</option>
-          </select>
+            {runningCommand ? "Running..." : "Execute"}
+          </button>
 
         </div>
 
@@ -299,37 +347,17 @@ export default function Home() {
 
           <table className="min-w-full text-sm">
 
-            <thead className="bg-gray-700 text-gray-300 uppercase text-xs">
+            <thead className="bg-gray-700 text-xs">
 
               <tr>
 
-                <th onClick={() => handleSort("accountName")} className="p-4 cursor-pointer">
-                  Account Name {getSortArrow("accountName")}
-                </th>
-
-                <th onClick={() => handleSort("accountId")} className="p-4 cursor-pointer">
-                  Account ID {getSortArrow("accountId")}
-                </th>
-
-                <th onClick={() => handleSort("service")} className="p-4 cursor-pointer">
-                  Service {getSortArrow("service")}
-                </th>
-
-                <th onClick={() => handleSort("name")} className="p-4 cursor-pointer">
-                  Name {getSortArrow("name")}
-                </th>
-
-                <th onClick={() => handleSort("id")} className="p-4 cursor-pointer">
-                  ID {getSortArrow("id")}
-                </th>
-
-                <th onClick={() => handleSort("host")} className="p-4 cursor-pointer">
-                  Host/IP {getSortArrow("host")}
-                </th>
-
-                <th onClick={() => handleSort("status")} className="p-4 cursor-pointer">
-                  Status {getSortArrow("status")}
-                </th>
+                <th className="p-4">Select</th>
+                <th className="p-4">Account</th>
+                <th className="p-4">Service</th>
+                <th className="p-4">Name</th>
+                <th className="p-4">ID</th>
+                <th className="p-4">Host</th>
+                <th className="p-4">Status</th>
 
               </tr>
 
@@ -339,10 +367,23 @@ export default function Home() {
 
               {paginatedData.map((item, index) => (
 
-                <tr key={index} className="border-t border-gray-700 hover:bg-gray-700/50">
+                <tr key={index} className="border-t border-gray-700">
 
-                  <td className="p-4 text-blue-400">{item.accountName}</td>
-                  <td className="p-4 text-blue-400">{item.accountId}</td>
+                  <td className="p-4">
+
+                    {item.service === "EC2" && (
+
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(item.id)}
+                        onChange={() => toggleSelect(item.id)}
+                      />
+
+                    )}
+
+                  </td>
+
+                  <td className="p-4">{item.accountName}</td>
                   <td className="p-4">{item.service}</td>
                   <td className="p-4">{item.name}</td>
                   <td className="p-4 text-gray-400">{item.id}</td>
@@ -351,7 +392,7 @@ export default function Home() {
                   <td className="p-4">
 
                     <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusStyle(item.status)}`}
+                      className={`px-3 py-1 rounded-full text-xs ${getStatusStyle(item.status)}`}
                     >
                       {item.status}
                     </span>
@@ -368,34 +409,28 @@ export default function Home() {
 
         </div>
 
-        {/* PAGINATION */}
+        {/* LOG OUTPUT */}
 
-        <div className="flex justify-center gap-3 mt-6">
+        {logs.length > 0 && (
 
-          <button
-            disabled={page === 1}
-            onClick={() => setPage(page - 1)}
-            className="px-3 py-1 bg-gray-700 rounded disabled:opacity-40"
-          >
-            Prev
-          </button>
+          <div className="mt-10 bg-black p-6 rounded-xl text-green-400 font-mono text-sm">
 
-          <span className="px-3 py-1">
-            Page {page} / {totalPages}
-          </span>
+            <h2 className="text-white mb-4">Command Logs</h2>
 
-          <button
-            disabled={page === totalPages}
-            onClick={() => setPage(page + 1)}
-            className="px-3 py-1 bg-gray-700 rounded disabled:opacity-40"
-          >
-            Next
-          </button>
+            <pre>
 
-        </div>
+{logs.join("\n")}
+
+            </pre>
+
+          </div>
+
+        )}
 
       </div>
 
     </main>
+
   );
+
 }
