@@ -10,6 +10,11 @@ function getCredentials(accountId: string) {
       id: process.env.AWS_ACCOUNT_1_ID,
       accessKey: process.env.AWS_ACCOUNT_1_ACCESS_KEY,
       secretKey: process.env.AWS_ACCOUNT_1_SECRET_KEY
+    },
+    {
+      id: process.env.AWS_ACCOUNT_2_ID,
+      accessKey: process.env.AWS_ACCOUNT_2_ACCESS_KEY,
+      secretKey: process.env.AWS_ACCOUNT_2_SECRET_KEY
     }
   ];
 
