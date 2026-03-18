@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 
-import { EC2Client, DescribeInstancesCommand, DescribeVpcsCommand, DescribeSubnetsCommand } from "@aws-sdk/client-ec2";
+import fs from "fs";
+import path from "path";
+
+import {
+  EC2Client,
+  DescribeInstancesCommand,
+  DescribeVpcsCommand,
+  DescribeSubnetsCommand
+} from "@aws-sdk/client-ec2";
+
 import { RDSClient, DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
 import { ECSClient, ListClustersCommand } from "@aws-sdk/client-ecs";
 import { CloudFrontClient, ListDistributionsCommand } from "@aws-sdk/client-cloudfront";
@@ -12,49 +21,58 @@ import { IAMClient, ListAccountAliasesCommand } from "@aws-sdk/client-iam";
 
 const region = process.env.AWS_REGION || "us-east-1";
 
-/* =================================
-   GET ACCOUNTS FROM ENV
-================================= */
+/* ===============================
+   LOAD LOCAL META DB
+=============================== */
+
+const metaPath = path.join(process.cwd(), "data/inventory-meta.json");
+
+let meta: any = {};
+if (fs.existsSync(metaPath)) {
+  meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+}
+
+/* ===============================
+   ACCOUNTS
+=============================== */
 
 function getAccounts() {
-
   const accounts = [];
   let i = 1;
 
   while (process.env[`AWS_ACCOUNT_${i}_ACCESS_KEY`]) {
-
     accounts.push({
       accessKeyId: process.env[`AWS_ACCOUNT_${i}_ACCESS_KEY`]!,
       secretAccessKey: process.env[`AWS_ACCOUNT_${i}_SECRET_KEY`]!,
     });
-
     i++;
-
   }
 
   return accounts;
 }
 
-/* =================================
-   API ROUTE
-================================= */
+/* ===============================
+   HELPER: TAG CLIENTE
+=============================== */
+
+function getClienteTag(tags: any[] = []) {
+  const tag = tags.find((t) => t.Key === "cliente");
+  return tag?.Value || "N/A";
+}
+
+/* ===============================
+   API
+=============================== */
 
 export async function GET() {
-
   try {
-
     const accounts = getAccounts();
     const inventory: any[] = [];
 
     for (const account of accounts) {
-
-      /* ===============================
-         AWS CLIENTS
-      =============================== */
-
       const credentials = {
         accessKeyId: account.accessKeyId,
-        secretAccessKey: account.secretAccessKey
+        secretAccessKey: account.secretAccessKey,
       };
 
       const ec2Client = new EC2Client({ region, credentials });
@@ -67,202 +85,135 @@ export async function GET() {
       const stsClient = new STSClient({ region, credentials });
       const iamClient = new IAMClient({ region, credentials });
 
-      /* ===============================
-         ACCOUNT INFO
-      =============================== */
-
       const identity = await stsClient.send(new GetCallerIdentityCommand({}));
       const accountId = identity.Account || "Unknown";
 
       let accountName = "N/A";
-
       try {
-
         const aliasData = await iamClient.send(new ListAccountAliasesCommand({}));
         accountName = aliasData.AccountAliases?.[0] || "N/A";
-
       } catch {}
 
-      /* ===============================
-         EC2
-      =============================== */
+      /* ================= EC2 ================= */
 
       const ec2Data = await ec2Client.send(new DescribeInstancesCommand({}));
 
-      ec2Data.Reservations?.forEach(reservation => {
-
-        reservation.Instances?.forEach(instance => {
+      ec2Data.Reservations?.forEach((reservation) => {
+        reservation.Instances?.forEach((instance) => {
+          const id = instance.InstanceId;
 
           inventory.push({
             accountName,
             accountId,
             service: "EC2",
-            name: instance.Tags?.find(t => t.Key === "Name")?.Value || "N/A",
-            id: instance.InstanceId,
+            name: instance.Tags?.find((t) => t.Key === "Name")?.Value || "N/A",
+            description: meta[id]?.description || "",
+            internalSoftwares: meta[id]?.internalSoftwares || "",
+            operatingSystem: instance.PlatformDetails || "Linux/Unix",
+            responsibleCompany: getClienteTag(instance.Tags),
+            id,
             host: instance.PrivateIpAddress || "N/A",
-            status: instance.State?.Name
+            status: instance.State?.Name,
           });
-
         });
-
       });
 
-      /* ===============================
-         RDS
-      =============================== */
+      /* ================= RDS ================= */
 
       const rdsData = await rdsClient.send(new DescribeDBInstancesCommand({}));
 
-      rdsData.DBInstances?.forEach(db => {
+      rdsData.DBInstances?.forEach((db) => {
+        const id = db.DBInstanceIdentifier;
 
         inventory.push({
           accountName,
           accountId,
           service: "RDS",
-          name: db.DBInstanceIdentifier,
-          id: db.DBInstanceIdentifier,
+          name: id,
+          description: meta[id]?.description || "",
+          internalSoftwares: meta[id]?.internalSoftwares || "",
+          operatingSystem: db.Engine || "N/A",
+          responsibleCompany: "N/A",
+          id,
           host: db.Endpoint?.Address || "N/A",
-          status: db.DBInstanceStatus
+          status: db.DBInstanceStatus,
         });
-
       });
 
-      /* ===============================
-         ECS
-      =============================== */
-
-      const clusters = await ecsClient.send(new ListClustersCommand({}));
-
-      clusters.clusterArns?.forEach(cluster => {
-
-        inventory.push({
-          accountName,
-          accountId,
-          service: "ECS",
-          name: cluster.split("/").pop(),
-          id: cluster,
-          host: "N/A",
-          status: "active"
-        });
-
-      });
-
-      /* ===============================
-         CloudFront
-      =============================== */
-
-      const cfData = await cloudfrontClient.send(new ListDistributionsCommand({}));
-
-      cfData.DistributionList?.Items?.forEach(dist => {
-
-        inventory.push({
-          accountName,
-          accountId,
-          service: "CloudFront",
-          name: dist.Comment || "N/A",
-          id: dist.Id,
-          host: dist.DomainName,
-          status: dist.Status
-        });
-
-      });
-
-      /* ===============================
-         S3
-      =============================== */
+      /* ================= S3 ================= */
 
       const buckets = await s3Client.send(new ListBucketsCommand({}));
 
-      buckets.Buckets?.forEach(bucket => {
+      buckets.Buckets?.forEach((bucket) => {
+        const id = bucket.Name!;
 
         inventory.push({
           accountName,
           accountId,
           service: "S3",
-          name: bucket.Name,
-          id: bucket.Name,
+          name: id,
+          description: meta[id]?.description || "",
+          internalSoftwares: meta[id]?.internalSoftwares || "",
+          operatingSystem: "N/A",
+          responsibleCompany: "N/A",
+          id,
           host: "N/A",
-          status: "available"
+          status: "available",
         });
-
       });
 
-      /* ===============================
-         LOAD BALANCERS
-      =============================== */
-
-      const lbs = await elbClient.send(new DescribeLoadBalancersCommand({}));
-
-      lbs.LoadBalancers?.forEach(lb => {
-
-        inventory.push({
-          accountName,
-          accountId,
-          service: "LoadBalancer",
-          name: lb.LoadBalancerName,
-          id: lb.LoadBalancerArn,
-          host: lb.DNSName,
-          status: lb.State?.Code
-        });
-
-      });
-
-      /* ===============================
-         VPC
-      =============================== */
+      /* ================= VPC ================= */
 
       const vpcs = await ec2Client.send(new DescribeVpcsCommand({}));
 
-      vpcs.Vpcs?.forEach(vpc => {
-
-        const nameTag = vpc.Tags?.find(tag => tag.Key === "Name");
+      vpcs.Vpcs?.forEach((vpc) => {
+        const id = vpc.VpcId;
 
         inventory.push({
           accountName,
           accountId,
           service: "VPC",
-          name: nameTag?.Value || "N/A",
-          id: vpc.VpcId,
+          name: vpc.Tags?.find((t) => t.Key === "Name")?.Value || "N/A",
+          description: meta[id]?.description || "",
+          internalSoftwares: meta[id]?.internalSoftwares || "",
+          operatingSystem: "N/A",
+          responsibleCompany: getClienteTag(vpc.Tags),
+          id,
           host: vpc.CidrBlock,
-          status: vpc.State
+          status: vpc.State,
         });
-
       });
 
-      /* ===============================
-         SUBNET
-      =============================== */
+      /* ================= SUBNET ================= */
 
       const subnets = await ec2Client.send(new DescribeSubnetsCommand({}));
 
-      subnets.Subnets?.forEach(subnet => {
-
-        const nameTag = subnet.Tags?.find(tag => tag.Key === "Name");
+      subnets.Subnets?.forEach((subnet) => {
+        const id = subnet.SubnetId;
 
         inventory.push({
           accountName,
           accountId,
           service: "Subnet",
-          name: nameTag?.Value || "N/A",
-          id: subnet.SubnetId,
+          name: subnet.Tags?.find((t) => t.Key === "Name")?.Value || "N/A",
+          description: meta[id]?.description || "",
+          internalSoftwares: meta[id]?.internalSoftwares || "",
+          operatingSystem: "N/A",
+          responsibleCompany: getClienteTag(subnet.Tags),
+          id,
           host: subnet.CidrBlock,
-          status: subnet.State
+          status: subnet.State,
         });
-
       });
-
     }
 
     return NextResponse.json(inventory);
-
   } catch (error) {
-
     console.error(error);
 
     return NextResponse.json(
       { error: "Error fetching AWS inventory" },
       { status: 500 }
     );
-
   }
 }
