@@ -62,7 +62,7 @@ export default function Home() {
   /* ================= LISTS ================= */
 
   const services = useMemo(
-    () => [...new Set(data.map(i => i.service))].sort(),
+    () => [...new Set(data.map(i => normalizeService(i.service)))].sort(),
     [data]
   );
 
@@ -84,10 +84,34 @@ export default function Home() {
     return map;
   }, [data]);
 
+  /* ================= STATUS HELPERS ================= */
+
+  const normalizeStatus = (status: string) => {
+    const s = status.toLowerCase();
+    if (["running", "available", "active"].includes(s)) return "running";
+    if (["stopped", "terminated"].includes(s)) return "stopped";
+    return s;
+  };
+
+  const getStatusStyle = (status: string) => {
+    const s = status.toLowerCase();
+
+    if (["running", "available", "active"].includes(s)) {
+      return "bg-green-900/40 text-green-400";
+    }
+
+    if (["stopped", "terminated"].includes(s)) {
+      return "bg-red-900/40 text-red-400";
+    }
+
+    return "bg-gray-700 text-gray-300";
+  };
+
   /* ================= FILTER ================= */
 
-  const includesOrEmpty = (arr: string[], value: string) =>
-    arr.length === 0 || arr.includes(value);
+  const normalizeService = (service: string) => {
+    return service.trim().toUpperCase();
+  };
 
   const filteredData = useMemo(() => {
     return data.filter(item => {
@@ -95,16 +119,29 @@ export default function Home() {
         item.name.toLowerCase().includes(search.toLowerCase()) ||
         item.id.toLowerCase().includes(search.toLowerCase());
 
-      const matchesService = includesOrEmpty(serviceFilter, item.service);
-      const matchesAccount = includesOrEmpty(accountFilter, item.accountName);
-      const matchesOS = includesOrEmpty(osFilter, item.operatingSystem || "N/A");
+      // ✅ FIX SERVICE REAL
+      const normalizedService = normalizeService(item.service);
 
-      const isRunning = ["running", "available", "active"].includes(item.status);
+      const matchesService =
+        serviceFilter.length === 0 ||
+        serviceFilter
+          .map(s => normalizeService(s))
+          .includes(normalizedService);
+
+      const matchesAccount =
+        accountFilter.length === 0 ||
+        accountFilter.includes(item.accountName);
+
+      const matchesOS =
+        osFilter.length === 0 ||
+        osFilter.includes(item.operatingSystem || "N/A");
+
+      // ✅ FIX STATUS REAL
+      const normalizedStatus = normalizeStatus(item.status);
 
       const matchesStatus =
         statusFilter.length === 0 ||
-        (statusFilter.includes("running") && isRunning) ||
-        (statusFilter.includes("stopped") && !isRunning);
+        statusFilter.includes(normalizedStatus);
 
       return (
         matchesSearch &&
@@ -240,13 +277,8 @@ export default function Home() {
 
         let log = `[${r.accountId}] ${displayName}\n\n`;
 
-        if (r.output && r.output.trim() !== "") {
-          log += `${r.output.trim()}\n`;
-        }
-
-        if (r.error && r.error.trim() !== "" && !r.output) {
-          log += `${r.error.trim()}\n`;
-        }
+        if (r.output) log += `${r.output}\n`;
+        if (r.error && !r.output) log += `${r.error}\n`;
 
         log += "\n---------------------------\n";
 
@@ -306,7 +338,6 @@ export default function Home() {
           <h1 className="text-4xl font-bold">MC Inventory</h1>
 
           <div className="flex items-center gap-4">
-
             <div className="text-right">
               <p className="text-sm font-semibold">
                 {session?.user?.name}
@@ -316,34 +347,10 @@ export default function Home() {
               </p>
             </div>
 
-            <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
-              className="raise-btn border-red-500 text-red-400"
-            >
-              Logout
-            </button>
-
-            <button
-              onClick={() => exportCSV(data, "inventory_all.csv")}
-              className="raise-btn border-green-500 text-green-400"
-            >
-              Export All
-            </button>
-
-            <button
-              onClick={() => exportCSV(filteredData, "inventory_filtered.csv")}
-              className="raise-btn border-green-700 text-green-500"
-            >
-              Export Filter
-            </button>
-
-            <button
-              onClick={fetchInventory}
-              className="raise-btn border-blue-500 text-blue-400"
-            >
-              {loading ? "Refreshing..." : "Refresh"}
-            </button>
-
+            <button onClick={() => signOut({ callbackUrl: "/login" })} className="raise-btn border-red-500 text-red-400">Logout</button>
+            <button onClick={() => exportCSV(data, "inventory_all.csv")} className="raise-btn border-green-500 text-green-400">Export All</button>
+            <button onClick={() => exportCSV(filteredData, "inventory_filtered.csv")} className="raise-btn border-green-700 text-green-500">Export Filter</button>
+            <button onClick={fetchInventory} className="raise-btn border-blue-500 text-blue-400">{loading ? "Refreshing..." : "Refresh"}</button>
           </div>
         </div>
 
@@ -470,7 +477,12 @@ export default function Home() {
                   <td className="p-3">{item.operatingSystem || "N/A"}</td>
                   <td className="p-3 text-gray-400">{item.id}</td>
                   <td className="p-3">{item.host}</td>
-                  <td className="p-3">{item.status}</td>
+
+                  <td className="p-3">
+                    <span className={`px-2 py-1 rounded text-xs ${getStatusStyle(item.status)}`}>
+                      {item.status}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
