@@ -10,11 +10,7 @@ type InventoryItem = {
   id: string;
   host: string;
   status: string;
-
-  description?: string;
-  internalSoftwares?: string;
   operatingSystem?: string;
-  responsibleCompany?: string;
 };
 
 export default function Home() {
@@ -22,10 +18,11 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
 
   const [search, setSearch] = useState("");
-  const [serviceFilter, setServiceFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [accountFilter, setAccountFilter] = useState("all");
-  const [osFilter, setOsFilter] = useState("all");
+
+  const [serviceFilter, setServiceFilter] = useState<string[]>([]);
+  const [accountFilter, setAccountFilter] = useState<string[]>([]);
+  const [osFilter, setOsFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
 
   const [selected, setSelected] = useState<string[]>([]);
 
@@ -37,141 +34,154 @@ export default function Home() {
 
   const fetchInventory = async () => {
     setLoading(true);
-    try {
-      const res = await fetch("/api/inventory");
-      const json = await res.json();
-      setData(json);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
+    const res = await fetch("/api/inventory");
+    const json = await res.json();
+    setData(json);
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchInventory();
-    const interval = setInterval(fetchInventory, 60000);
-    return () => clearInterval(interval);
   }, []);
 
-  /* ================= META SAVE ================= */
+  /* ================= LISTS ================= */
 
-  const saveMeta = async (
-    id: string,
-    description?: string,
-    internalSoftwares?: string
-  ) => {
-    await fetch("/api/inventory/meta", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ id, description, internalSoftwares }),
+  const services = useMemo(
+    () => [...new Set(data.map(i => i.service))].sort(),
+    [data]
+  );
+
+  const accounts = useMemo(
+    () => [...new Set(data.map(i => i.accountName))].sort(),
+    [data]
+  );
+
+  const osList = useMemo(
+    () => [...new Set(data.map(i => i.operatingSystem || "N/A"))].sort(),
+    [data]
+  );
+
+  const idToNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    data.forEach(i => {
+      map[i.id] = i.name;
     });
-  };
-
-  /* ================= STATUS ================= */
-
-  const healthyStates = ["running", "available", "active"];
-
-  const getStatusStyle = (status: string) => {
-    return healthyStates.includes(status)
-      ? "bg-green-500/20 text-green-400"
-      : "bg-red-500/20 text-red-400";
-  };
-
-  /* ================= DYNAMIC LISTS ================= */
-
-  const services = useMemo(() => {
-    return Array.from(new Set(data.map((i) => i.service))).sort();
-  }, [data]);
-
-  const accounts = useMemo(() => {
-    return Array.from(new Set(data.map((i) => i.accountName))).sort();
-  }, [data]);
-
-  const operatingSystems = useMemo(() => {
-    return Array.from(
-      new Set(data.map((i) => i.operatingSystem || "N/A"))
-    ).sort();
+    return map;
   }, [data]);
 
   /* ================= FILTER ================= */
 
+  const includesOrEmpty = (arr: string[], value: string) =>
+    arr.length === 0 || arr.includes(value);
+
   const filteredData = useMemo(() => {
-    return data.filter((item) => {
+    return data.filter(item => {
       const matchesSearch =
         item.name.toLowerCase().includes(search.toLowerCase()) ||
         item.id.toLowerCase().includes(search.toLowerCase());
 
-      const matchesService =
-        serviceFilter === "all" || item.service === serviceFilter;
+      const matchesService = includesOrEmpty(serviceFilter, item.service);
+      const matchesAccount = includesOrEmpty(accountFilter, item.accountName);
+      const matchesOS = includesOrEmpty(osFilter, item.operatingSystem || "N/A");
+
+      const isRunning = ["running", "available", "active"].includes(item.status);
 
       const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "running" &&
-          healthyStates.includes(item.status)) ||
-        (statusFilter === "stopped" &&
-          !healthyStates.includes(item.status));
-
-      const matchesAccount =
-        accountFilter === "all" || item.accountName === accountFilter;
-
-      const matchesOS =
-        osFilter === "all" ||
-        (item.operatingSystem || "N/A") === osFilter;
+        statusFilter.length === 0 ||
+        (statusFilter.includes("running") && isRunning) ||
+        (statusFilter.includes("stopped") && !isRunning);
 
       return (
         matchesSearch &&
         matchesService &&
-        matchesStatus &&
         matchesAccount &&
-        matchesOS
+        matchesOS &&
+        matchesStatus
       );
     });
-  }, [
-    data,
-    search,
-    serviceFilter,
-    statusFilter,
-    accountFilter,
-    osFilter,
-  ]);
+  }, [data, search, serviceFilter, accountFilter, osFilter, statusFilter]);
 
   /* ================= METRICS ================= */
 
   const total = filteredData.length;
 
-  const running = filteredData.filter((i) =>
-    healthyStates.includes(i.status)
+  const running = filteredData.filter(i =>
+    ["running", "available", "active"].includes(i.status)
   ).length;
 
   const stopped = total - running;
 
-  const hasFilters =
-    search ||
-    serviceFilter !== "all" ||
-    statusFilter !== "all" ||
-    accountFilter !== "all" ||
-    osFilter !== "all";
+  /* ================= CLEAR ================= */
+
+  const clearFilters = () => {
+    setSearch("");
+    setServiceFilter([]);
+    setAccountFilter([]);
+    setOsFilter([]);
+    setStatusFilter([]);
+  };
+
+  const clearLogs = () => setLogs([]);
+  const clearCommand = () => setCommand("");
+
+  /* ================= EXPORT CSV ================= */
+
+  const exportCSV = (rows: InventoryItem[], filename: string) => {
+    const headers = [
+      "Account",
+      "Account ID",
+      "Service",
+      "Name",
+      "Instance ID",
+      "Host",
+      "OS",
+      "Status"
+    ];
+
+    const csv = [
+      headers.join(","),
+      ...rows.map(r =>
+        [
+          r.accountName,
+          r.accountId,
+          r.service,
+          r.name,
+          r.id,
+          r.host,
+          r.operatingSystem || "N/A",
+          r.status
+        ]
+          .map(v => `"${v}"`)
+          .join(",")
+      )
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+  };
 
   /* ================= SELECT ================= */
 
   const toggleSelect = (id: string) => {
-    setSelected((prev) =>
+    setSelected(prev =>
       prev.includes(id)
-        ? prev.filter((i) => i !== id)
+        ? prev.filter(i => i !== id)
         : [...prev, id]
     );
   };
 
   const allEC2Ids = filteredData
-    .filter((i) => i.service === "EC2")
-    .map((i) => i.id);
+    .filter(i => i.service === "EC2")
+    .map(i => i.id);
 
   const isAllSelected =
     allEC2Ids.length > 0 &&
-    allEC2Ids.every((id) => selected.includes(id));
+    allEC2Ids.every(id => selected.includes(id));
 
   const toggleSelectAll = () => {
     setSelected(isAllSelected ? [] : allEC2Ids);
@@ -183,46 +193,92 @@ export default function Home() {
     if (!command) return;
 
     const instances = data
-      .filter((i) => selected.includes(i.id) && i.service === "EC2")
-      .map((i) => ({
+      .filter(i =>
+        selected.includes(i.id) &&
+        i.service === "EC2" &&
+        i.status === "running"
+      )
+      .map(i => ({
         instanceId: i.id,
-        accountId: i.accountId,
+        accountId: i.accountId
       }));
 
     if (!instances.length) {
-      alert("Select EC2 instances first");
+      alert("Only running EC2 instances allowed");
       return;
     }
 
     setRunningCommand(true);
-    setLogs(["Starting execution...\n"]);
+    setLogs(["🚀 Starting execution...\n"]);
 
     try {
       const res = await fetch("/api/ec2/run-command", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ instances, command }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instances, command })
       });
 
       const result = await res.json();
 
-      const newLogs = result.map(
-        (r: any) => `[${r.accountId}] ${r.instanceId}
+      const newLogs = result.map((r: any) => {
+        const displayName = idToNameMap[r.instanceId] || r.instanceId;
 
-${r.output || r.error}
+        let log = `[${r.accountId}] ${displayName}\n\n`;
 
----------------------------`
-      );
+        if (r.output && r.output.trim() !== "") {
+          log += `${r.output.trim()}\n`;
+        }
+
+        if (r.error && r.error.trim() !== "" && !r.output) {
+          log += `${r.error.trim()}\n`;
+        }
+
+        log += "\n---------------------------\n";
+
+        return log;
+      });
 
       setLogs(newLogs);
     } catch {
-      setLogs(["Execution failed"]);
+      setLogs(["❌ Execution failed"]);
     } finally {
       setRunningCommand(false);
     }
   };
+
+  /* ================= UI HELPERS ================= */
+
+  const filterChips = (
+    list: string[],
+    state: string[],
+    setState: any
+  ) => (
+    <div className="flex flex-wrap gap-2">
+      {list.map(item => {
+        const active = state.includes(item);
+
+        return (
+          <button
+            key={item}
+            onClick={() =>
+              setState((prev: string[]) =>
+                prev.includes(item)
+                  ? prev.filter(i => i !== item)
+                  : [...prev, item]
+              )
+            }
+            className={`px-3 py-1 rounded-full text-xs border transition
+              ${active
+                ? "bg-blue-600 border-blue-600 text-white"
+                : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+              }`}
+          >
+            {item}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   /* ================= UI ================= */
 
@@ -234,16 +290,32 @@ ${r.output || r.error}
         <div className="flex justify-between items-center mb-10">
           <h1 className="text-4xl font-bold">MC Inventory</h1>
 
-          <button
-            onClick={fetchInventory}
-            className="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg"
-          >
-            {loading ? "Refreshing..." : "Refresh"}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => exportCSV(data, "inventory_all.csv")}
+              className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded"
+            >
+              Export All
+            </button>
+
+            <button
+              onClick={() => exportCSV(filteredData, "inventory_filtered.csv")}
+              className="bg-green-800 hover:bg-green-900 px-4 py-2 rounded"
+            >
+              Export Filter
+            </button>
+
+            <button
+              onClick={fetchInventory}
+              className="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg"
+            >
+              {loading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
         </div>
 
         {/* METRICS */}
-        <div className="grid grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-3 gap-6 mb-8">
           <div className="bg-gray-800 p-6 rounded-xl">
             <p className="text-gray-400 text-sm">Total</p>
             <h2 className="text-3xl font-bold">{total}</h2>
@@ -260,87 +332,74 @@ ${r.output || r.error}
           </div>
         </div>
 
-        {/* ACTIVE FILTER INFO */}
-        {hasFilters && (
-          <div className="mb-4 text-sm text-gray-400">
-            Showing {total} filtered resources
-          </div>
-        )}
-
         {/* FILTERS */}
-        <div className="flex flex-wrap gap-4 mb-6">
-
+        <div className="bg-gray-800 p-6 rounded-xl mb-8 space-y-6">
           <input
-            placeholder="Search..."
+            placeholder="Search by name or ID..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="bg-gray-800 border border-gray-700 px-4 py-2 rounded-lg w-64"
+            onChange={e => setSearch(e.target.value)}
+            className="bg-gray-900 px-4 py-2 rounded w-full"
           />
 
-          <select
-            value={serviceFilter}
-            onChange={(e) => setServiceFilter(e.target.value)}
-            className="bg-gray-800 border border-gray-700 px-4 py-2 rounded-lg"
-          >
-            <option value="all">All Services</option>
-            {services.map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
+          <div>
+            <p className="text-sm text-gray-400 mb-2">Service</p>
+            {filterChips(services, serviceFilter, setServiceFilter)}
+          </div>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-gray-800 border border-gray-700 px-4 py-2 rounded-lg"
-          >
-            <option value="all">All Status</option>
-            <option value="running">Running</option>
-            <option value="stopped">Stopped</option>
-          </select>
+          <div>
+            <p className="text-sm text-gray-400 mb-2">Account</p>
+            {filterChips(accounts, accountFilter, setAccountFilter)}
+          </div>
 
-          <select
-            value={accountFilter}
-            onChange={(e) => setAccountFilter(e.target.value)}
-            className="bg-gray-800 border border-gray-700 px-4 py-2 rounded-lg"
-          >
-            <option value="all">All Accounts</option>
-            {accounts.map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
+          <div>
+            <p className="text-sm text-gray-400 mb-2">Operating System</p>
+            {filterChips(osList, osFilter, setOsFilter)}
+          </div>
 
-          <select
-            value={osFilter}
-            onChange={(e) => setOsFilter(e.target.value)}
-            className="bg-gray-800 border border-gray-700 px-4 py-2 rounded-lg"
+          <div>
+            <p className="text-sm text-gray-400 mb-2">Status</p>
+            {filterChips(["running", "stopped"], statusFilter, setStatusFilter)}
+          </div>
+
+          <button
+            onClick={clearFilters}
+            className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded"
           >
-            <option value="all">All OS</option>
-            {operatingSystems.map((o) => (
-              <option key={o}>{o}</option>
-            ))}
-          </select>
+            Clear Filters
+          </button>
         </div>
 
         {/* COMMAND */}
         <div className="bg-gray-800 p-6 rounded-xl mb-8">
+          <h2 className="mb-3 text-lg">Execute Command (EC2 only)</h2>
+
           <textarea
             value={command}
-            onChange={(e) => setCommand(e.target.value)}
+            onChange={e => setCommand(e.target.value)}
             className="w-full bg-gray-900 p-3 rounded mb-4"
           />
 
-          <button
-            onClick={runCommand}
-            className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded"
-          >
-            {runningCommand ? "Running..." : "Execute"}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={runCommand}
+              className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded"
+            >
+              {runningCommand ? "Running..." : "Execute"}
+            </button>
+
+            <button
+              onClick={clearCommand}
+              className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded"
+            >
+              Clear Command
+            </button>
+          </div>
         </div>
 
         {/* TABLE */}
         <div className="bg-gray-800 rounded-xl overflow-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-700 text-xs">
+            <thead className="bg-gray-700 text-xs uppercase">
               <tr>
                 <th className="p-3">
                   <input
@@ -360,40 +419,25 @@ ${r.output || r.error}
             </thead>
 
             <tbody>
-              {filteredData.map((item) => (
-                <tr key={item.id} className="border-t border-gray-700">
+              {filteredData.map(item => (
+                <tr key={item.id} className="border-t border-gray-700 hover:bg-gray-700/40">
                   <td className="p-3 text-center">
-                    {item.service === "EC2" ? (
+                    {item.service === "EC2" && (
                       <input
                         type="checkbox"
                         checked={selected.includes(item.id)}
                         onChange={() => toggleSelect(item.id)}
                       />
-                    ) : (
-                      "-"
                     )}
                   </td>
 
                   <td className="p-3">{item.accountName}</td>
-
-                  <td className="p-3">
-                    <span className="bg-blue-600/20 text-blue-400 px-2 py-1 rounded-full text-xs">
-                      {item.service}
-                    </span>
-                  </td>
-
+                  <td className="p-3">{item.service}</td>
                   <td className="p-3">{item.name}</td>
                   <td className="p-3">{item.operatingSystem || "N/A"}</td>
-                  <td className="p-3">{item.id}</td>
+                  <td className="p-3 text-gray-400">{item.id}</td>
                   <td className="p-3">{item.host}</td>
-
-                  <td className="p-3">
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs ${getStatusStyle(item.status)}`}
-                    >
-                      {item.status}
-                    </span>
-                  </td>
+                  <td className="p-3">{item.status}</td>
                 </tr>
               ))}
             </tbody>
@@ -402,10 +446,20 @@ ${r.output || r.error}
 
         {/* LOGS */}
         {logs.length > 0 && (
-          <div className="mt-10 bg-black p-6 rounded-xl text-green-400 font-mono">
+          <div className="mt-10 bg-black p-6 rounded-xl text-green-400 font-mono text-sm">
+            <div className="flex justify-between mb-4">
+              <h3>Logs</h3>
+              <button
+                onClick={clearLogs}
+                className="bg-red-600 hover:bg-red-700 px-3 py-1 rounded"
+              >
+                Clear Logs
+              </button>
+            </div>
             <pre>{logs.join("\n")}</pre>
           </div>
         )}
+
       </div>
     </main>
   );
