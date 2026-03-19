@@ -23,14 +23,15 @@ export default function Home() {
 
   const [search, setSearch] = useState("");
   const [serviceFilter, setServiceFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [accountFilter, setAccountFilter] = useState("all");
+  const [osFilter, setOsFilter] = useState("all");
 
   const [selected, setSelected] = useState<string[]>([]);
 
   const [command, setCommand] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
   const [runningCommand, setRunningCommand] = useState(false);
-
-  const [saving, setSaving] = useState<string | null>(null);
 
   /* ================= FETCH ================= */
 
@@ -53,15 +54,13 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  /* ================= SAVE META ================= */
+  /* ================= META SAVE ================= */
 
   const saveMeta = async (
     id: string,
     description?: string,
     internalSoftwares?: string
   ) => {
-    setSaving(id);
-
     await fetch("/api/inventory/meta", {
       method: "POST",
       headers: {
@@ -69,9 +68,33 @@ export default function Home() {
       },
       body: JSON.stringify({ id, description, internalSoftwares }),
     });
-
-    setSaving(null);
   };
+
+  /* ================= STATUS ================= */
+
+  const healthyStates = ["running", "available", "active"];
+
+  const getStatusStyle = (status: string) => {
+    return healthyStates.includes(status)
+      ? "bg-green-500/20 text-green-400"
+      : "bg-red-500/20 text-red-400";
+  };
+
+  /* ================= DYNAMIC LISTS ================= */
+
+  const services = useMemo(() => {
+    return Array.from(new Set(data.map((i) => i.service))).sort();
+  }, [data]);
+
+  const accounts = useMemo(() => {
+    return Array.from(new Set(data.map((i) => i.accountName))).sort();
+  }, [data]);
+
+  const operatingSystems = useMemo(() => {
+    return Array.from(
+      new Set(data.map((i) => i.operatingSystem || "N/A"))
+    ).sort();
+  }, [data]);
 
   /* ================= FILTER ================= */
 
@@ -84,27 +107,53 @@ export default function Home() {
       const matchesService =
         serviceFilter === "all" || item.service === serviceFilter;
 
-      return matchesSearch && matchesService;
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "running" &&
+          healthyStates.includes(item.status)) ||
+        (statusFilter === "stopped" &&
+          !healthyStates.includes(item.status));
+
+      const matchesAccount =
+        accountFilter === "all" || item.accountName === accountFilter;
+
+      const matchesOS =
+        osFilter === "all" ||
+        (item.operatingSystem || "N/A") === osFilter;
+
+      return (
+        matchesSearch &&
+        matchesService &&
+        matchesStatus &&
+        matchesAccount &&
+        matchesOS
+      );
     });
-  }, [data, search, serviceFilter]);
-
-  /* ================= STATUS ================= */
-
-  const healthyStates = ["running", "available", "active"];
-
-  const getStatusStyle = (status: string) => {
-    return healthyStates.includes(status)
-      ? "bg-green-500/20 text-green-400"
-      : "bg-red-500/20 text-red-400";
-  };
+  }, [
+    data,
+    search,
+    serviceFilter,
+    statusFilter,
+    accountFilter,
+    osFilter,
+  ]);
 
   /* ================= METRICS ================= */
 
-  const total = data.length;
-  const running = data.filter((i) =>
+  const total = filteredData.length;
+
+  const running = filteredData.filter((i) =>
     healthyStates.includes(i.status)
   ).length;
+
   const stopped = total - running;
+
+  const hasFilters =
+    search ||
+    serviceFilter !== "all" ||
+    statusFilter !== "all" ||
+    accountFilter !== "all" ||
+    osFilter !== "all";
 
   /* ================= SELECT ================= */
 
@@ -125,11 +174,7 @@ export default function Home() {
     allEC2Ids.every((id) => selected.includes(id));
 
   const toggleSelectAll = () => {
-    if (isAllSelected) {
-      setSelected([]);
-    } else {
-      setSelected(allEC2Ids);
-    }
+    setSelected(isAllSelected ? [] : allEC2Ids);
   };
 
   /* ================= COMMAND ================= */
@@ -172,7 +217,7 @@ ${r.output || r.error}
       );
 
       setLogs(newLogs);
-    } catch (error) {
+    } catch {
       setLogs(["Execution failed"]);
     } finally {
       setRunningCommand(false);
@@ -187,38 +232,44 @@ ${r.output || r.error}
 
         {/* HEADER */}
         <div className="flex justify-between items-center mb-10">
-          <h1 className="text-4xl font-bold tracking-tight">
-            MC Inventory
-          </h1>
+          <h1 className="text-4xl font-bold">MC Inventory</h1>
 
           <button
             onClick={fetchInventory}
-            className="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg transition"
+            className="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg"
           >
             {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
 
         {/* METRICS */}
-        <div className="grid grid-cols-3 gap-6 mb-10">
-          <div className="bg-gray-800 p-6 rounded-xl shadow">
+        <div className="grid grid-cols-3 gap-6 mb-6">
+          <div className="bg-gray-800 p-6 rounded-xl">
             <p className="text-gray-400 text-sm">Total</p>
             <h2 className="text-3xl font-bold">{total}</h2>
           </div>
 
-          <div className="bg-green-900/40 p-6 rounded-xl shadow">
+          <div className="bg-green-900/40 p-6 rounded-xl">
             <p className="text-green-400 text-sm">Running</p>
             <h2 className="text-3xl font-bold">{running}</h2>
           </div>
 
-          <div className="bg-red-900/40 p-6 rounded-xl shadow">
+          <div className="bg-red-900/40 p-6 rounded-xl">
             <p className="text-red-400 text-sm">Stopped</p>
             <h2 className="text-3xl font-bold">{stopped}</h2>
           </div>
         </div>
 
+        {/* ACTIVE FILTER INFO */}
+        {hasFilters && (
+          <div className="mb-4 text-sm text-gray-400">
+            Showing {total} filtered resources
+          </div>
+        )}
+
         {/* FILTERS */}
-        <div className="flex gap-4 mb-6">
+        <div className="flex flex-wrap gap-4 mb-6">
+
           <input
             placeholder="Search..."
             value={search}
@@ -231,17 +282,47 @@ ${r.output || r.error}
             onChange={(e) => setServiceFilter(e.target.value)}
             className="bg-gray-800 border border-gray-700 px-4 py-2 rounded-lg"
           >
-            <option value="all">All</option>
-            <option value="EC2">EC2</option>
-            <option value="S3">S3</option>
-            <option value="RDS">RDS</option>
+            <option value="all">All Services</option>
+            {services.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-gray-800 border border-gray-700 px-4 py-2 rounded-lg"
+          >
+            <option value="all">All Status</option>
+            <option value="running">Running</option>
+            <option value="stopped">Stopped</option>
+          </select>
+
+          <select
+            value={accountFilter}
+            onChange={(e) => setAccountFilter(e.target.value)}
+            className="bg-gray-800 border border-gray-700 px-4 py-2 rounded-lg"
+          >
+            <option value="all">All Accounts</option>
+            {accounts.map((a) => (
+              <option key={a}>{a}</option>
+            ))}
+          </select>
+
+          <select
+            value={osFilter}
+            onChange={(e) => setOsFilter(e.target.value)}
+            className="bg-gray-800 border border-gray-700 px-4 py-2 rounded-lg"
+          >
+            <option value="all">All OS</option>
+            {operatingSystems.map((o) => (
+              <option key={o}>{o}</option>
+            ))}
           </select>
         </div>
 
         {/* COMMAND */}
         <div className="bg-gray-800 p-6 rounded-xl mb-8">
-          <h2 className="mb-3 text-lg">Run Command</h2>
-
           <textarea
             value={command}
             onChange={(e) => setCommand(e.target.value)}
@@ -257,9 +338,9 @@ ${r.output || r.error}
         </div>
 
         {/* TABLE */}
-        <div className="bg-gray-800 rounded-xl overflow-auto shadow">
+        <div className="bg-gray-800 rounded-xl overflow-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-700 sticky top-0 text-xs uppercase">
+            <thead className="bg-gray-700 text-xs">
               <tr>
                 <th className="p-3">
                   <input
@@ -271,10 +352,7 @@ ${r.output || r.error}
                 <th className="p-3">Account</th>
                 <th className="p-3">Service</th>
                 <th className="p-3">Name</th>
-                <th className="p-3">Description</th>
                 <th className="p-3">OS</th>
-                <th className="p-3">Softwares</th>
-                <th className="p-3">Company</th>
                 <th className="p-3">ID</th>
                 <th className="p-3">Host</th>
                 <th className="p-3">Status</th>
@@ -283,10 +361,7 @@ ${r.output || r.error}
 
             <tbody>
               {filteredData.map((item) => (
-                <tr
-                  key={item.id}
-                  className="border-t border-gray-700 hover:bg-gray-700/40 transition"
-                >
+                <tr key={item.id} className="border-t border-gray-700">
                   <td className="p-3 text-center">
                     {item.service === "EC2" ? (
                       <input
@@ -295,55 +370,21 @@ ${r.output || r.error}
                         onChange={() => toggleSelect(item.id)}
                       />
                     ) : (
-                      <span className="text-gray-600">—</span>
+                      "-"
                     )}
                   </td>
 
                   <td className="p-3">{item.accountName}</td>
-                  <td className="p-3">{item.service}</td>
+
+                  <td className="p-3">
+                    <span className="bg-blue-600/20 text-blue-400 px-2 py-1 rounded-full text-xs">
+                      {item.service}
+                    </span>
+                  </td>
+
                   <td className="p-3">{item.name}</td>
-
-                  {/* DESCRIPTION */}
-                  <td className="p-3">
-                    <input
-                      defaultValue={item.description || ""}
-                      onBlur={(e) =>
-                        saveMeta(
-                          item.id,
-                          e.target.value,
-                          item.internalSoftwares
-                        )
-                      }
-                      className="bg-gray-700 px-2 py-1 rounded w-48"
-                    />
-                  </td>
-
-                  {/* OS */}
-                  <td className="p-3 text-gray-300">
-                    {item.operatingSystem || "N/A"}
-                  </td>
-
-                  {/* SOFTWARES */}
-                  <td className="p-3">
-                    <input
-                      defaultValue={item.internalSoftwares || ""}
-                      onBlur={(e) =>
-                        saveMeta(
-                          item.id,
-                          item.description,
-                          e.target.value
-                        )
-                      }
-                      className="bg-gray-700 px-2 py-1 rounded w-48"
-                    />
-                  </td>
-
-                  {/* COMPANY */}
-                  <td className="p-3 text-blue-400">
-                    {item.responsibleCompany || "N/A"}
-                  </td>
-
-                  <td className="p-3 text-gray-400">{item.id}</td>
+                  <td className="p-3">{item.operatingSystem || "N/A"}</td>
+                  <td className="p-3">{item.id}</td>
                   <td className="p-3">{item.host}</td>
 
                   <td className="p-3">
@@ -361,8 +402,7 @@ ${r.output || r.error}
 
         {/* LOGS */}
         {logs.length > 0 && (
-          <div className="mt-10 bg-black p-6 rounded-xl font-mono text-green-400 text-sm">
-            <h2 className="text-white mb-4">Logs</h2>
+          <div className="mt-10 bg-black p-6 rounded-xl text-green-400 font-mono">
             <pre>{logs.join("\n")}</pre>
           </div>
         )}

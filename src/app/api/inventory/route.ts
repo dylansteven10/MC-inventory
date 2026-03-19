@@ -11,13 +11,10 @@ import {
 } from "@aws-sdk/client-ec2";
 
 import { RDSClient, DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
-import { ECSClient, ListClustersCommand } from "@aws-sdk/client-ecs";
-import { CloudFrontClient, ListDistributionsCommand } from "@aws-sdk/client-cloudfront";
+import { ECSClient } from "@aws-sdk/client-ecs";
+import { CloudFrontClient } from "@aws-sdk/client-cloudfront";
 import { S3Client, ListBucketsCommand } from "@aws-sdk/client-s3";
-import { ElasticLoadBalancingV2Client, DescribeLoadBalancersCommand } from "@aws-sdk/client-elastic-load-balancing-v2";
-
-import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
-import { IAMClient, ListAccountAliasesCommand } from "@aws-sdk/client-iam";
+import { ElasticLoadBalancingV2Client } from "@aws-sdk/client-elastic-load-balancing-v2";
 
 const region = process.env.AWS_REGION || "us-east-1";
 
@@ -33,7 +30,7 @@ if (fs.existsSync(metaPath)) {
 }
 
 /* ===============================
-   ACCOUNTS
+   ACCOUNTS (🔥 DESDE .ENV)
 =============================== */
 
 function getAccounts() {
@@ -42,6 +39,8 @@ function getAccounts() {
 
   while (process.env[`AWS_ACCOUNT_${i}_ACCESS_KEY`]) {
     accounts.push({
+      name: process.env[`AWS_ACCOUNT_${i}_NAME`] || "N/A",
+      id: process.env[`AWS_ACCOUNT_${i}_ID`] || "N/A",
       accessKeyId: process.env[`AWS_ACCOUNT_${i}_ACCESS_KEY`]!,
       secretAccessKey: process.env[`AWS_ACCOUNT_${i}_SECRET_KEY`]!,
     });
@@ -82,17 +81,8 @@ export async function GET() {
       const s3Client = new S3Client({ region, credentials });
       const elbClient = new ElasticLoadBalancingV2Client({ region, credentials });
 
-      const stsClient = new STSClient({ region, credentials });
-      const iamClient = new IAMClient({ region, credentials });
-
-      const identity = await stsClient.send(new GetCallerIdentityCommand({}));
-      const accountId = identity.Account || "Unknown";
-
-      let accountName = "N/A";
-      try {
-        const aliasData = await iamClient.send(new ListAccountAliasesCommand({}));
-        accountName = aliasData.AccountAliases?.[0] || "N/A";
-      } catch {}
+      const accountId = account.id;
+      const accountName = account.name;
 
       /* ================= EC2 ================= */
 
