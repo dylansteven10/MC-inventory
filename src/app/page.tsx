@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 type InventoryItem = {
   accountName: string;
@@ -14,6 +16,9 @@ type InventoryItem = {
 };
 
 export default function Home() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
   const [data, setData] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -30,6 +35,14 @@ export default function Home() {
   const [logs, setLogs] = useState<string[]>([]);
   const [runningCommand, setRunningCommand] = useState(false);
 
+  /* ================= AUTH ================= */
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/login");
+    }
+  }, [status, router]);
+
   /* ================= FETCH ================= */
 
   const fetchInventory = async () => {
@@ -41,8 +54,10 @@ export default function Home() {
   };
 
   useEffect(() => {
-    fetchInventory();
-  }, []);
+    if (status === "authenticated") {
+      fetchInventory();
+    }
+  }, [status]);
 
   /* ================= LISTS ================= */
 
@@ -290,27 +305,45 @@ export default function Home() {
         <div className="flex justify-between items-center mb-10">
           <h1 className="text-4xl font-bold">MC Inventory</h1>
 
-          <div className="flex gap-3">
+          <div className="flex items-center gap-4">
+
+            <div className="text-right">
+              <p className="text-sm font-semibold">
+                {session?.user?.name}
+              </p>
+              <p className="text-xs text-gray-400">
+                {session?.user?.email}
+              </p>
+            </div>
+
+            <button
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="raise-btn border-red-500 text-red-400"
+            >
+              Logout
+            </button>
+
             <button
               onClick={() => exportCSV(data, "inventory_all.csv")}
-              className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded"
+              className="raise-btn border-green-500 text-green-400"
             >
               Export All
             </button>
 
             <button
               onClick={() => exportCSV(filteredData, "inventory_filtered.csv")}
-              className="bg-green-800 hover:bg-green-900 px-4 py-2 rounded"
+              className="raise-btn border-green-700 text-green-500"
             >
               Export Filter
             </button>
 
             <button
               onClick={fetchInventory}
-              className="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg"
+              className="raise-btn border-blue-500 text-blue-400"
             >
               {loading ? "Refreshing..." : "Refresh"}
             </button>
+
           </div>
         </div>
 
@@ -461,6 +494,24 @@ export default function Home() {
         )}
 
       </div>
+
+      {/* RAISE STYLE */}
+      <style jsx global>{`
+        .raise-btn {
+          background: transparent;
+          border: 2px solid;
+          padding: 8px 16px;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: 0.25s;
+        }
+
+        .raise-btn:hover {
+          box-shadow: 0 0.5em 0.5em -0.4em currentColor;
+          transform: translateY(-0.25em);
+          color: white;
+        }
+      `}</style>
     </main>
   );
 }

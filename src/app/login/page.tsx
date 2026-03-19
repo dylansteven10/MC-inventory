@@ -1,11 +1,22 @@
 "use client";
 
-import { signIn } from "next-auth/react";
-import { useState } from "react";
+import { signIn, useSession } from "next-auth/react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  // 🔥 REDIRECT AUTOMÁTICO SI YA ESTÁ LOGUEADO
+  useEffect(() => {
+    if (status === "authenticated") {
+      router.push("/");
+    }
+  }, [status, router]);
 
   return (
     <main className="login-page">
@@ -40,26 +51,34 @@ export default function LoginPage() {
             />
           </div>
 
-          {/* SIGN IN */}
+          {/* SIGN IN LOCAL */}
           <div className="inputBx">
             <input
               type="submit"
               value="Sign in"
               disabled={!username || !password}
-              onClick={() =>
-                signIn("credentials", {
-                    username,
-                    password,
-                    callbackUrl: "/",
-                })
+              onClick={async () => {
+                const res = await signIn("credentials", {
+                  username,
+                  password,
+                  redirect: false, // 🔥 control manual
+                });
+
+                if (res?.ok) {
+                  router.push("/"); // 🔥 redirect manual
+                } else {
+                  alert("Invalid credentials");
                 }
+              }}
             />
           </div>
 
-          {/* REAL LOGIN */}
+          {/* LOGIN OFFICE */}
           <div className="inputBx">
             <button
-              onClick={() => signIn("azure-ad")}
+              onClick={() =>
+                signIn("azure-ad", { callbackUrl: "/" })
+              }
               className="office-btn"
             >
               Sign in with Office365
@@ -201,7 +220,6 @@ export default function LoginPage() {
           opacity: 0.5;
         }
 
-        /* 🔥 OFFICE BUTTON */
         .office-btn {
           width: 100%;
           padding: 12px;
