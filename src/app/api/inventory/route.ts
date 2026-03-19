@@ -24,7 +24,7 @@ const region = process.env.AWS_REGION || "us-east-1";
 
 const metaPath = path.join(process.cwd(), "data/inventory-meta.json");
 
-let meta: any = {};
+let meta: Record<string, any> = {};
 if (fs.existsSync(metaPath)) {
   meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
 }
@@ -90,7 +90,7 @@ export async function GET() {
 
       ec2Data.Reservations?.forEach((reservation) => {
         reservation.Instances?.forEach((instance) => {
-          const id = instance.InstanceId;
+          const id = instance.InstanceId || "";
 
           inventory.push({
             accountName,
@@ -113,7 +113,7 @@ export async function GET() {
       const rdsData = await rdsClient.send(new DescribeDBInstancesCommand({}));
 
       rdsData.DBInstances?.forEach((db) => {
-        const id = db.DBInstanceIdentifier;
+        const id = db.DBInstanceIdentifier || "";
 
         inventory.push({
           accountName,
@@ -135,7 +135,7 @@ export async function GET() {
       const buckets = await s3Client.send(new ListBucketsCommand({}));
 
       buckets.Buckets?.forEach((bucket) => {
-        const id = bucket.Name!;
+        const id = bucket.Name || "";
 
         inventory.push({
           accountName,
@@ -157,7 +157,7 @@ export async function GET() {
       const vpcs = await ec2Client.send(new DescribeVpcsCommand({}));
 
       vpcs.Vpcs?.forEach((vpc) => {
-        const id = vpc.VpcId;
+        const id = vpc.VpcId || "";
 
         inventory.push({
           accountName,
@@ -179,7 +179,7 @@ export async function GET() {
       const subnets = await ec2Client.send(new DescribeSubnetsCommand({}));
 
       subnets.Subnets?.forEach((subnet) => {
-        const id = subnet.SubnetId;
+        const id = subnet.SubnetId || "";
 
         inventory.push({
           accountName,
