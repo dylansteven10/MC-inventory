@@ -28,8 +28,8 @@ const handler = NextAuth({
         ) {
           return {
             id: "1",
-            name: "Local Admin",
-            email: "admin@local",
+            name: "Administrator",
+            email: "admin@example.com",
           };
         }
 

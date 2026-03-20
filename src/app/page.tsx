@@ -22,6 +22,7 @@ export default function Home() {
 
   const [data, setData] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const [search, setSearch] = useState("");
 
@@ -49,23 +50,85 @@ export default function Home() {
     }
   }, [status, router]);
 
+  /* ================= CACHE FUNCTIONS ================= */
+
+  const loadFromCache = () => {
+    try {
+      const cached = localStorage.getItem('inventory-cache');
+      const cachedTime = localStorage.getItem('inventory-cache-time');
+      
+      if (cached && cachedTime) {
+        const cacheAge = Date.now() - parseInt(cachedTime);
+        const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+        
+        if (cacheAge < CACHE_DURATION) {
+          const parsedData = JSON.parse(cached);
+          setData(parsedData);
+          setLastUpdated(new Date(parseInt(cachedTime)));
+          return true;
+        }
+      }
+    } catch (error) {
+      console.error('Error loading from cache:', error);
+    }
+    return false;
+  };
+
+  const saveToCache = (inventoryData: InventoryItem[]) => {
+    try {
+      localStorage.setItem('inventory-cache', JSON.stringify(inventoryData));
+      localStorage.setItem('inventory-cache-time', Date.now().toString());
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error('Error saving to cache:', error);
+    }
+  };
+
+  const clearCache = () => {
+    try {
+      localStorage.removeItem('inventory-cache');
+      localStorage.removeItem('inventory-cache-time');
+      setLastUpdated(null);
+      fetchInventory(true); // Refrescar después de limpiar caché
+    } catch (error) {
+      console.error('Error clearing cache:', error);
+    }
+  };
+
   /* ================= FETCH ================= */
 
-  const fetchInventory = async () => {
+  const fetchInventory = async (forceRefresh = false) => {
+    // Intentar cargar desde caché primero (si no es forced refresh)
+    if (!forceRefresh) {
+      const loadedFromCache = loadFromCache();
+      if (loadedFromCache) {
+        console.log('📦 Data loaded from cache');
+        return;
+      }
+    }
+
     setLoading(true);
-    const res = await fetch("/api/inventory");
-    const json = await res.json();
-    setData(json);
-    setLoading(false);
+    try {
+      console.log('🔄 Fetching fresh data from AWS...');
+      const res = await fetch("/api/inventory");
+      const json = await res.json();
+      setData(json);
+      saveToCache(json);
+      console.log('✅ Data fetched and cached');
+    } catch (error) {
+      console.error('Error fetching inventory:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     if (status === "authenticated") {
-      fetchInventory();
+      fetchInventory(false); // false = intentar usar caché primero
     }
   }, [status]);
 
-  /* ================= HELPER FUNCTIONS (MOVED BEFORE useMemo) ================= */
+  /* ================= HELPER FUNCTIONS ================= */
 
   const normalizeService = (service: string) => {
     return service.trim().toUpperCase();
@@ -125,7 +188,6 @@ export default function Home() {
         item.name.toLowerCase().includes(search.toLowerCase()) ||
         item.id.toLowerCase().includes(search.toLowerCase());
 
-      // ✅ FIX SERVICE REAL
       const normalizedService = normalizeService(item.service);
 
       const matchesService =
@@ -142,7 +204,6 @@ export default function Home() {
         osFilter.length === 0 ||
         osFilter.includes(item.operatingSystem || "N/A");
 
-      // ✅ FIX STATUS REAL
       const normalizedStatus = normalizeStatus(item.status);
 
       const matchesStatus =
@@ -333,6 +394,17 @@ export default function Home() {
     </div>
   );
 
+  // Función para generar una clave única para cada fila
+  const getUniqueKey = (item: InventoryItem) => {
+    return `${item.accountId}-${item.service}-${item.id}-${item.name}`;
+  };
+
+  // Formatear hora de última actualización
+  const formatLastUpdated = () => {
+    if (!lastUpdated) return '';
+    return lastUpdated.toLocaleTimeString();
+  };
+
   // Si no está montado en cliente, mostrar loading
   if (!isMounted) {
     return (
@@ -369,7 +441,29 @@ export default function Home() {
             <button onClick={() => signOut({ callbackUrl: "/login" })} className="raise-btn border-red-500 text-red-400">Logout</button>
             <button onClick={() => exportCSV(data, "inventory_all.csv")} className="raise-btn border-green-500 text-green-400">Export All</button>
             <button onClick={() => exportCSV(filteredData, "inventory_filtered.csv")} className="raise-btn border-green-700 text-green-500">Export Filter</button>
-            <button onClick={fetchInventory} className="raise-btn border-blue-500 text-blue-400">{loading ? "Refreshing..." : "Refresh"}</button>
+            
+            {/* Botón Refresh con indicador de caché */}
+            <div className="flex items-center gap-2">
+              {lastUpdated && (
+                <span className="text-xs text-gray-400">
+                  {formatLastUpdated()}
+                </span>
+              )}
+              <button 
+                onClick={() => fetchInventory(true)} 
+                className="raise-btn border-blue-500 text-blue-400"
+                disabled={loading}
+              >
+                {loading ? "Refreshing..." : "⟳ Refresh"}
+              </button>
+              <button
+                onClick={clearCache}
+                className="raise-btn border-yellow-500 text-yellow-400 text-xs px-2 py-1"
+                title="Clear cache and refresh"
+              >
+                🗑️
+              </button>
+            </div>
           </div>
         </div>
 
@@ -480,7 +574,7 @@ export default function Home() {
 
             <tbody>
               {filteredData.map(item => (
-                <tr key={item.id} className="border-t border-gray-700 hover:bg-gray-700/40">
+                <tr key={getUniqueKey(item)} className="border-t border-gray-700 hover:bg-gray-700/40">
                   <td className="p-3 text-center">
                     {item.service === "EC2" && (
                       <input
