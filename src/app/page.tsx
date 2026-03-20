@@ -16,6 +16,7 @@ type InventoryItem = {
 };
 
 export default function Home() {
+  const [isMounted, setIsMounted] = useState(false);
   const { data: session, status } = useSession();
   const router = useRouter();
 
@@ -34,6 +35,11 @@ export default function Home() {
   const [command, setCommand] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
   const [runningCommand, setRunningCommand] = useState(false);
+
+  // Marcar cuando el componente está montado en cliente
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   /* ================= AUTH ================= */
 
@@ -58,6 +64,33 @@ export default function Home() {
       fetchInventory();
     }
   }, [status]);
+
+  /* ================= HELPER FUNCTIONS (MOVED BEFORE useMemo) ================= */
+
+  const normalizeService = (service: string) => {
+    return service.trim().toUpperCase();
+  };
+
+  const normalizeStatus = (status: string) => {
+    const s = status.toLowerCase();
+    if (["running", "available", "active"].includes(s)) return "running";
+    if (["stopped", "terminated"].includes(s)) return "stopped";
+    return s;
+  };
+
+  const getStatusStyle = (status: string) => {
+    const s = status.toLowerCase();
+
+    if (["running", "available", "active"].includes(s)) {
+      return "bg-green-900/40 text-green-400";
+    }
+
+    if (["stopped", "terminated"].includes(s)) {
+      return "bg-red-900/40 text-red-400";
+    }
+
+    return "bg-gray-700 text-gray-300";
+  };
 
   /* ================= LISTS ================= */
 
@@ -84,34 +117,7 @@ export default function Home() {
     return map;
   }, [data]);
 
-  /* ================= STATUS HELPERS ================= */
-
-  const normalizeStatus = (status: string) => {
-    const s = status.toLowerCase();
-    if (["running", "available", "active"].includes(s)) return "running";
-    if (["stopped", "terminated"].includes(s)) return "stopped";
-    return s;
-  };
-
-  const getStatusStyle = (status: string) => {
-    const s = status.toLowerCase();
-
-    if (["running", "available", "active"].includes(s)) {
-      return "bg-green-900/40 text-green-400";
-    }
-
-    if (["stopped", "terminated"].includes(s)) {
-      return "bg-red-900/40 text-red-400";
-    }
-
-    return "bg-gray-700 text-gray-300";
-  };
-
   /* ================= FILTER ================= */
-
-  const normalizeService = (service: string) => {
-    return service.trim().toUpperCase();
-  };
 
   const filteredData = useMemo(() => {
     return data.filter(item => {
@@ -327,6 +333,19 @@ export default function Home() {
     </div>
   );
 
+  // Si no está montado en cliente, mostrar loading
+  if (!isMounted) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-gray-950 to-gray-900 text-white p-8">
+        <div className="max-w-[95%] mx-auto">
+          <div className="flex justify-center items-center h-64">
+            <p className="text-gray-400">Cargando inventario...</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   /* ================= UI ================= */
 
   return (
@@ -403,7 +422,7 @@ export default function Home() {
 
           <button
             onClick={clearFilters}
-            className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded"
+            className="raise-btn border-orange-500 text-orange-400"
           >
             Clear Filters
           </button>
@@ -422,14 +441,15 @@ export default function Home() {
           <div className="flex gap-3">
             <button
               onClick={runCommand}
-              className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded"
+              disabled={runningCommand}
+              className="raise-btn border-purple-500 text-purple-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {runningCommand ? "Running..." : "Execute"}
             </button>
 
             <button
               onClick={clearCommand}
-              className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded"
+              className="raise-btn border-gray-500 text-gray-400"
             >
               Clear Command
             </button>
@@ -496,7 +516,7 @@ export default function Home() {
               <h3>Logs</h3>
               <button
                 onClick={clearLogs}
-                className="bg-red-600 hover:bg-red-700 px-3 py-1 rounded"
+                className="raise-btn border-red-500 text-red-400"
               >
                 Clear Logs
               </button>
@@ -518,10 +538,15 @@ export default function Home() {
           transition: 0.25s;
         }
 
-        .raise-btn:hover {
+        .raise-btn:hover:not(:disabled) {
           box-shadow: 0 0.5em 0.5em -0.4em currentColor;
           transform: translateY(-0.25em);
           color: white;
+        }
+
+        .raise-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
       `}</style>
     </main>
