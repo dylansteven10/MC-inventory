@@ -23,8 +23,8 @@ declare module "next-auth" {
   }
 }
 
-// Función para asignar rol basado en email
-function getUserRole(email: string | undefined, name?: string | null): UserRole {
+// Función para asignar rol basado en email (maneja null)
+function getUserRole(email: string | null | undefined, name?: string | null): UserRole {
   if (!email) return "infraestructura";
   
   const emailLower = email.toLowerCase();
@@ -122,7 +122,7 @@ const authOptions: NextAuthOptions = {
       // Para Azure AD, asignar rol basado en email
       if (account?.provider === "azure-ad") {
         const email = (profile as any)?.email || token.email;
-        token.role = getUserRole(email as string);
+        token.role = getUserRole(email as string | null | undefined);
         token.email = email;
       }
       
