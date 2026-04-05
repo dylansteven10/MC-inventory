@@ -40,8 +40,21 @@ const serviceColors: Record<string, string> = {
 };
 
 export default function Home() {
-  const { theme, themeName } = useTheme();
-  const [isMounted, setIsMounted] = useState(false);
+  // Solo usar useTheme después de montado
+  const [mounted, setMounted] = useState(false);
+  let theme = "purple";
+  let themeName = "Purple Passion";
+  
+  try {
+    const themeHook = useTheme();
+    if (mounted) {
+      theme = themeHook.theme;
+      themeName = themeHook.themeName;
+    }
+  } catch (e) {
+    // Ignorar error durante SSR
+  }
+  
   const { data: session, status } = useSession();
   const router = useRouter();
 
@@ -67,6 +80,10 @@ export default function Home() {
   const canExecuteCommands = rolesCanExecuteCommands.includes(userRole);
   const visibleServices = roleVisibleServices[userRole] || [];
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Detectar tamaño de pantalla
   useEffect(() => {
     const checkMobile = () => {
@@ -75,10 +92,6 @@ export default function Home() {
     checkMobile();
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
-  }, []);
-
-  useEffect(() => {
-    setIsMounted(true);
   }, []);
 
   useEffect(() => {
@@ -257,7 +270,8 @@ export default function Home() {
     }
   };
 
-  if (!isMounted) {
+  // Si no está montado, mostrar loading simple
+  if (!mounted) {
     return (
       <div className="min-h-screen bg-[var(--bg-dark)] flex items-center justify-center">
         <div className="text-center">
