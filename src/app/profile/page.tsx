@@ -3,6 +3,8 @@
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useTheme, themeLabels } from "../providers/ThemeProvider";
+import type { ThemeName } from "../providers/ThemeProvider";
 
 type UserRole = "admin" | "infraestructura" | "telecomunicaciones" | "basedatos" | "seguridad";
 
@@ -61,9 +63,20 @@ const roleBadgeColors: Record<UserRole, string> = {
   seguridad: "bg-red-500/20 text-red-400 border-red-500",
 };
 
+// Temas disponibles con sus colores de preview
+const themes: { id: ThemeName; colors: string[] }[] = [
+  { id: "purple", colors: ["#8b5cf6", "#ec4899", "#d946ef"] },
+  { id: "ocean", colors: ["#06b6d4", "#14b8a6", "#2dd4bf"] },
+  { id: "sunset", colors: ["#f97316", "#ef4444", "#ec4899"] },
+  { id: "forest", colors: ["#10b981", "#14b8a6", "#6ee7b7"] },
+  { id: "midnight", colors: ["#6366f1", "#8b5cf6", "#c084fc"] },
+  { id: "cherry", colors: ["#f472b6", "#fb7185", "#f43f5e"] },
+];
+
 export default function ProfilePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const { theme, setTheme, themeName } = useTheme();
   const [lastLoginLocal, setLastLoginLocal] = useState<string>("");
   const [mounted, setMounted] = useState(false);
 
@@ -109,18 +122,15 @@ export default function ProfilePage() {
   const userEmail = session.user.email || "usuario@ejemplo.com";
   const userName = session.user.name || "Usuario";
 
-  // Obtener color de fondo para el avatar basado en el rol
-  const avatarBgColor = roleColors[userRole].replace("bg-gradient-to-r from-", "").replace("to-", "").trim();
-
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
+    <main className="min-h-screen" style={{ background: `linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-card) 100%)` }}>
       {/* Header con navegación */}
-      <div className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm sticky top-0 z-10">
+      <div className="border-b border-[var(--border)] bg-[var(--bg-card)]/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
             <button
               onClick={() => router.push("/")}
-              className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+              className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -130,7 +140,7 @@ export default function ProfilePage() {
             
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors border border-red-500/20"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--error)]/10 text-[var(--error)] hover:bg-[var(--error)]/20 transition-colors border border-[var(--error)]/20"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -145,7 +155,7 @@ export default function ProfilePage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         
         {/* Tarjeta de perfil */}
-        <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 overflow-hidden shadow-2xl">
+        <div className="bg-[var(--bg-card)]/50 backdrop-blur-sm rounded-2xl border border-[var(--border)] overflow-hidden shadow-2xl">
           
           {/* Banner decorativo con gradiente según rol */}
           <div className={`h-32 sm:h-40 ${roleColors[userRole]}`}></div>
@@ -156,7 +166,7 @@ export default function ProfilePage() {
             {/* Avatar y nombre - layout responsive */}
             <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6 -mt-12 sm:-mt-16 mb-6 sm:mb-8">
               {/* Avatar */}
-              <div className={`w-24 h-24 sm:w-32 sm:h-32 rounded-2xl ${roleColors[userRole]} flex items-center justify-center shadow-xl border-4 border-gray-900`}>
+              <div className={`w-24 h-24 sm:w-32 sm:h-32 rounded-2xl ${roleColors[userRole]} flex items-center justify-center shadow-xl border-4 border-[var(--bg-card)]`}>
                 <span className="text-4xl sm:text-5xl font-bold text-white">
                   {userInitial}
                 </span>
@@ -164,7 +174,7 @@ export default function ProfilePage() {
               
               {/* Nombre y rol */}
               <div className="flex-1">
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-[var(--text-primary)] mb-2">
                   {userName}
                 </h1>
                 <div className="flex flex-wrap gap-2">
@@ -178,27 +188,27 @@ export default function ProfilePage() {
 
             {/* Información de contacto */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-              <div className="flex items-center gap-3 p-4 rounded-xl bg-gray-800/50 border border-gray-700">
-                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                  <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-3 p-4 rounded-xl bg-[var(--bg-hover)]/50 border border-[var(--border)]">
+                <div className="w-10 h-10 rounded-lg bg-[var(--info)]/20 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-[var(--info)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400">Correo electrónico</p>
-                  <p className="text-sm sm:text-base text-white">{userEmail}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">Correo electrónico</p>
+                  <p className="text-sm sm:text-base text-[var(--text-primary)]">{userEmail}</p>
                 </div>
               </div>
               
-              <div className="flex items-center gap-3 p-4 rounded-xl bg-gray-800/50 border border-gray-700">
-                <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
-                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-3 p-4 rounded-xl bg-[var(--bg-hover)]/50 border border-[var(--border)]">
+                <div className="w-10 h-10 rounded-lg bg-[var(--success)]/20 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-[var(--success)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400">Último acceso</p>
-                  <p className="text-sm sm:text-base text-white">
+                  <p className="text-xs text-[var(--text-secondary)]">Último acceso</p>
+                  <p className="text-sm sm:text-base text-[var(--text-primary)]">
                     {lastLogin ? new Date(lastLogin).toLocaleString() : "Primera vez"}
                   </p>
                 </div>
@@ -206,31 +216,84 @@ export default function ProfilePage() {
             </div>
 
             {/* Línea divisoria */}
-            <div className="border-t border-gray-800 my-6"></div>
+            <div className="border-t border-[var(--border)] my-6"></div>
 
             {/* Permisos del rol */}
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
-                <h2 className="text-lg sm:text-xl font-semibold text-white">Permisos del Rol</h2>
+                <h2 className="text-lg sm:text-xl font-semibold text-[var(--text-primary)]">Permisos del Rol</h2>
               </div>
               
-              <div className="bg-gray-800/30 rounded-xl p-4 sm:p-6 border border-gray-700">
+              <div className="bg-[var(--bg-hover)]/30 rounded-xl p-4 sm:p-6 border border-[var(--border)]">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {roleDescriptions[userRole].map((permission, index) => (
                     <div key={index} className="flex items-center gap-2 text-sm sm:text-base">
-                      <span className="text-gray-300">{permission}</span>
+                      <span className="text-[var(--text-secondary)]">{permission}</span>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
 
+            {/* Selector de temas */}
+            <div className="mt-8">
+              <div className="flex items-center gap-2 mb-4">
+                <svg className="w-5 h-5 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                </svg>
+                <h2 className="text-lg sm:text-xl font-semibold text-[var(--text-primary)]">Personalizar tema</h2>
+              </div>
+              
+              <div className="bg-[var(--bg-hover)]/30 rounded-xl p-4 sm:p-6 border border-[var(--border)]">
+                <p className="text-sm text-[var(--text-secondary)] mb-4">
+                  Tema actual: <span className="text-[var(--text-primary)] font-medium">{themeName}</span>
+                </p>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+                  {themes.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setTheme(t.id)}
+                      className={`group relative p-4 rounded-xl transition-all ${
+                        theme === t.id
+                          ? "ring-2 ring-white shadow-lg scale-105"
+                          : "hover:scale-105 hover:shadow-xl"
+                      }`}
+                      style={{
+                        background: `linear-gradient(135deg, ${t.colors[0]}, ${t.colors[1]})`,
+                      }}
+                    >
+                      <div className="absolute inset-0 rounded-xl bg-black/20 group-hover:bg-black/10 transition-all"></div>
+                      <div className="relative z-10">
+                        <div className="flex justify-center gap-1 mb-2">
+                          {t.colors.map((color, idx) => (
+                            <div
+                              key={idx}
+                              className="w-4 h-4 rounded-full"
+                              style={{ backgroundColor: color }}
+                            ></div>
+                          ))}
+                        </div>
+                        <p className="text-xs font-medium text-white text-center">
+                          {themeLabels[t.id]}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                
+                <p className="text-xs text-[var(--text-secondary)] mt-4 text-center">
+                  El tema se guarda automáticamente y se aplica a toda la aplicación
+                </p>
+              </div>
+            </div>
+
             {/* Información adicional */}
-            <div className="mt-8 p-4 rounded-xl bg-gray-800/20 border border-gray-800">
-              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-gray-500">
+            <div className="mt-8 p-4 rounded-xl bg-[var(--bg-hover)]/20 border border-[var(--border])">
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-[var(--text-secondary)]">
                 <div className="flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
