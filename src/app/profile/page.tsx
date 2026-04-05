@@ -74,11 +74,26 @@ const themes: { id: ThemeName; colors: string[] }[] = [
 ];
 
 export default function ProfilePage() {
+  const [mounted, setMounted] = useState(false);
   const { data: session, status } = useSession();
   const router = useRouter();
-  const { theme, setTheme, themeName } = useTheme();
   const [lastLoginLocal, setLastLoginLocal] = useState<string>("");
-  const [mounted, setMounted] = useState(false);
+  
+  // Solo usar useTheme después de montado
+  let theme = "purple";
+  let themeName = "Purple Passion";
+  let setTheme = (t: ThemeName) => {};
+  
+  try {
+    const themeHook = useTheme();
+    if (mounted) {
+      theme = themeHook.theme;
+      themeName = themeHook.themeName;
+      setTheme = themeHook.setTheme;
+    }
+  } catch (e) {
+    // Ignorar error durante SSR
+  }
 
   useEffect(() => {
     setMounted(true);
@@ -103,10 +118,10 @@ export default function ProfilePage() {
 
   if (!mounted || status === "loading") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-950 to-gray-900 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--bg-dark)] flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-400">Cargando perfil...</p>
+          <div className="w-12 h-12 border-4 border-[var(--primary)] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-[var(--text-secondary)]">Cargando perfil...</p>
         </div>
       </div>
     );
@@ -292,7 +307,7 @@ export default function ProfilePage() {
             </div>
 
             {/* Información adicional */}
-            <div className="mt-8 p-4 rounded-xl bg-[var(--bg-hover)]/20 border border-[var(--border])">
+            <div className="mt-8 p-4 rounded-xl bg-[var(--bg-hover)]/20 border border-[var(--border)]">
               <div className="flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-[var(--text-secondary)]">
                 <div className="flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

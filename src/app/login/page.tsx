@@ -5,33 +5,43 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const [mounted, setMounted] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  // 🔥 REDIRECT AUTOMÁTICO SI YA ESTÁ LOGUEADO
   useEffect(() => {
-    if (status === "authenticated") {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (status === "authenticated" && mounted) {
       router.push("/");
     }
-  }, [status, router]);
+  }, [status, router, mounted]);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-dark)] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[var(--primary)] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <main className="login-page">
-      
-      {/* RING ANIMATION */}
       <div className="ring">
         <i style={{ ["--clr" as any]: "#6724e3" }}></i>
         <i style={{ ["--clr" as any]: "#e68b8a" }}></i>
         <i style={{ ["--clr" as any]: "#fff" }}></i>
 
-        {/* LOGIN BOX */}
         <div className="login">
           <h2>MC Inventory</h2>
 
-          {/* USERNAME */}
           <div className="inputBx">
             <input
               type="text"
@@ -41,7 +51,6 @@ export default function LoginPage() {
             />
           </div>
 
-          {/* PASSWORD */}
           <div className="inputBx">
             <input
               type="password"
@@ -51,7 +60,6 @@ export default function LoginPage() {
             />
           </div>
 
-          {/* SIGN IN LOCAL */}
           <div className="inputBx">
             <input
               type="submit"
@@ -61,11 +69,11 @@ export default function LoginPage() {
                 const res = await signIn("credentials", {
                   username,
                   password,
-                  redirect: false, // 🔥 control manual
+                  redirect: false,
                 });
 
                 if (res?.ok) {
-                  router.push("/"); // 🔥 redirect manual
+                  router.push("/");
                 } else {
                   alert("Invalid credentials");
                 }
@@ -73,7 +81,6 @@ export default function LoginPage() {
             />
           </div>
 
-          {/* LOGIN OFFICE */}
           <div className="inputBx">
             <button
               onClick={() =>
@@ -91,7 +98,6 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* STYLES */}
       <style jsx global>{`
         @import url("https://fonts.googleapis.com/css2?family=Quicksand:wght@300&display=swap");
 
@@ -103,13 +109,13 @@ export default function LoginPage() {
         }
 
         .login-page {
-        position: fixed;
-        inset: 0;
-        background: #111;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        overflow: hidden;
+          position: fixed;
+          inset: 0;
+          background: #111;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          overflow: hidden;
         }
 
         .ring {
@@ -122,15 +128,15 @@ export default function LoginPage() {
         }
 
         .ring i {
-        position: absolute;
-        inset: 0;
-        border: 2px solid transparent;
-        transition: 0.5s;
+          position: absolute;
+          inset: 0;
+          border: 2px solid transparent;
+          transition: 0.5s;
         }
 
         .ring:hover i {
-        border: 6px solid var(--clr);
-        filter: drop-shadow(0 0 20px var(--clr));
+          border: 6px solid var(--clr);
+          filter: drop-shadow(0 0 20px var(--clr));
         }
 
         .ring i:nth-child(1) {
@@ -144,8 +150,8 @@ export default function LoginPage() {
         }
 
         .ring i:nth-child(3) {
-        border-radius: 41% 44% 56% 59% / 38% 62% 63% 37%;
-        animation: animate2 10s linear infinite;
+          border-radius: 41% 44% 56% 59% / 38% 62% 63% 37%;
+          animation: animate2 10s linear infinite;
         }
 
         .ring:hover i {
