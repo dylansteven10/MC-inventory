@@ -13,7 +13,6 @@ export default function EC2Terminal({ instanceId, accountId }: Props) {
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const term = useRef<Terminal | null>(null);
-
   const [currentCommand, setCurrentCommand] = useState("");
 
   useEffect(() => {
@@ -42,29 +41,19 @@ export default function EC2Terminal({ instanceId, accountId }: Props) {
     if (!term.current) return;
 
     if (data === "\r") {
-
       executeCommand(currentCommand);
-
       setCurrentCommand("");
-
       term.current.write("\r\n");
-
       return;
-
     }
 
     if (data === "\u007F") {
-
       setCurrentCommand((prev) => prev.slice(0, -1));
-
       term.current.write("\b \b");
-
       return;
-
     }
 
     setCurrentCommand((prev) => prev + data);
-
     term.current.write(data);
 
   };
@@ -73,42 +62,69 @@ export default function EC2Terminal({ instanceId, accountId }: Props) {
 
     if (!term.current) return;
 
+    const trimmed = cmd.trim();
+
+    if (!trimmed) {
+      term.current.write("$ ");
+      return;
+    }
+
     term.current.write("\r\nRunning...\r\n");
 
-    const res = await fetch("/api/ec2/run-command", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        instances: [
-          {
-            instanceId,
-            accountId
-          }
-        ],
-        command: cmd
-      })
-    });
+    try {
 
-    const result = await res.json();
+      const res = await fetch("/api/ec2/run-command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instances: [{ instanceId, accountId }],
+          command: trimmed
+        })
+      });
 
-    const output = result[0]?.output || result[0]?.error || "No output";
+      // ── Comando bloqueado por seguridad ──
+      if (res.status === 403) {
+        term.current.write("\x1b[33m⚠ El comando que está intentando ejecutar no está permitido.\x1b[0m\r\n");
+        term.current.write("$ ");
+        return;
+      }
 
-    term.current.write(output + "\r\n");
+      // ── Error del servidor ──
+      if (!res.ok) {
+        term.current.write(`\x1b[31m✗ Error del servidor (${res.status})\x1b[0m\r\n`);
+        term.current.write("$ ");
+        return;
+      }
+
+      const result = await res.json();
+      const first = result[0];
+
+      if (!first) {
+        term.current.write("\x1b[31m✗ Sin respuesta del servidor\x1b[0m\r\n");
+        term.current.write("$ ");
+        return;
+      }
+
+      if (first.output) {
+        term.current.write(first.output.replace(/\n/g, "\r\n") + "\r\n");
+      } else if (first.error) {
+        term.current.write(`\x1b[31m✗ ${first.error}\x1b[0m\r\n`);
+      } else {
+        term.current.write("(sin salida)\r\n");
+      }
+
+    } catch {
+      term.current.write("\x1b[31m✗ No se pudo conectar con el servidor\x1b[0m\r\n");
+    }
 
     term.current.write("$ ");
 
   };
 
   return (
-
     <div className="bg-black p-4 rounded-xl">
-
       <div ref={terminalRef} style={{ height: "400px" }} />
-
     </div>
-
   );
 
 }

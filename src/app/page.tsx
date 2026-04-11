@@ -257,6 +257,19 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ instances, command })
       });
+
+      // ── Comando bloqueado por seguridad ──
+      if (res.status === 403) {
+        setLogs(["⚠️ El comando que está intentando ejecutar no está permitido."]);
+        return;
+      }
+
+      // ── Error del servidor ──
+      if (!res.ok) {
+        setLogs([`❌ Error del servidor (${res.status})`]);
+        return;
+      }
+
       const result = await res.json();
       const newLogs = result.map((r: any) => {
         const displayName = data.find(i => i.id === r.instanceId)?.name || r.instanceId;
@@ -264,8 +277,9 @@ export default function Home() {
       });
       setLogs(newLogs);
     } catch {
-      setLogs(["❌ Error al ejecutar comando"]);
+      setLogs(["❌ No se pudo conectar con el servidor"]);
     } finally {
+      // ── Siempre desbloquea el botón ──
       setRunningCommand(false);
     }
   };
