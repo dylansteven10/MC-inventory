@@ -31,9 +31,10 @@ type UserRole =
 // Constants
 // ─────────────────────────────────────────────
 
-const CACHE_KEY = "inventory-cache";
+const CACHE_KEY      = "inventory-cache";
 const CACHE_TIME_KEY = "inventory-cache-time";
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
+const CACHE_TTL_MS   = 5 * 60 * 1000;  // 5 minutos
+const FETCH_TIMEOUT  = 30_000;          // 30 segundos máximo de espera
 
 const ROLE_VISIBLE_SERVICES: Record<UserRole, string[]> = {
   admin:             ["EC2", "RDS", "S3", "VPC", "Subnet"],
@@ -124,9 +125,17 @@ export default function Home() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // ── Loading ───────────────────────────────
-  const [loading,         setLoading]         = useState(true);  // true por defecto → splash visible desde el inicio
+  // Hard load = no existe la key de sesión en sessionStorage.
+  // sessionStorage se borra con F5/Ctrl+R o al abrir nueva pestaña.
+  // Se conserva en navegación interna de Next.js (router.push / Link).
+  const _isHardLoad = typeof window !== "undefined"
+    ? !sessionStorage.getItem("mc-inv-session")
+    : false;
+
+  const [loading, setLoading] = useState<boolean>(_isHardLoad); // splash inmediato en hard load
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage,  setLoadingMessage]  = useState("Inicializando inventario cloud...");
+  const [fetchError,      setFetchError]      = useState<string | null>(null);
 
   // ── UI state ──────────────────────────────
   const [mobileView,   setMobileView]   = useState(false);
@@ -152,24 +161,22 @@ export default function Home() {
   const visibleServices = ROLE_VISIBLE_SERVICES[userRole] ?? [];
 
   // ── First load detection ──────────────────
-  // Detecta carga inicial / refresh de URL del navegador.
-  // sessionStorage se resetea en cada nueva pestaña o al presionar F5/Ctrl+R,
-  // pero se conserva en navegación interna de Next.js (router.push, Link, etc.)
-  const isHardLoad = useRef<boolean>(false);
-  useEffect(() => {
-    const key = "mc-inventory-session-active";
-    if (!sessionStorage.getItem(key)) {
-      // Primera carga real o refresh del navegador
-      sessionStorage.setItem(key, "1");
-      isHardLoad.current = true;
-    }
-  }, []);
+  // Leer sessionStorage directamente al inicializar el ref (no en useEffect)
+  // para que isHardLoad sea correcto desde el primer render.
+  // sessionStorage se resetea con F5/Ctrl+R o al abrir nueva pestaña,
+  // pero se conserva en navegación interna de Next.js.
+  // useRef con el mismo valor calculado arriba (reutilizar _isHardLoad)
+  const isHardLoad = useRef<boolean>(_isHardLoad);
 
   // ─────────────────────────────────────────
   // Effects
   // ─────────────────────────────────────────
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+    // Marcar que la sesión ya está activa → próximas navegaciones internas no son hard load
+    sessionStorage.setItem("mc-inv-session", "1");
+  }, []);
 
   useEffect(() => {
     const check = () => setMobileView(window.innerWidth < 768);
@@ -184,9 +191,17 @@ export default function Home() {
 
   useEffect(() => {
     if (status === "authenticated") {
-      // Si es carga inicial o refresh del navegador, ignorar caché
-      fetchInventory(isHardLoad.current ? true : false);
-      isHardLoad.current = false; // Solo forzar en el primer mount
+      const forceRefresh = isHardLoad.current;
+      isHardLoad.current = false; // resetear antes del fetch
+
+      if (forceRefresh) {
+        // Hard load: activar splash inmediatamente antes del fetch
+        setLoading(true);
+        setLoadingProgress(0);
+        setLoadingMessage("Inicializando inventario cloud...");
+      }
+
+      fetchInventory(forceRefresh);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, userRole]);
@@ -204,6 +219,7 @@ export default function Home() {
         if (age < CACHE_TTL_MS) {
           setData(JSON.parse(cached));
           setLastUpdated(new Date(parseInt(cachedTime, 10)));
+          setLoading(false); // ← asegurar que el splash se apague aunque loading fuera true
           return true;
         }
       }
@@ -243,6 +259,7 @@ export default function Home() {
     if (!forceRefresh && loadFromCache()) return;
 
     setLoading(true);
+    setFetchError(null);
     setLoadingProgress(0);
     setLoadingMessage("Conectando con AWS...");
 
@@ -255,8 +272,15 @@ export default function Home() {
       }
     }, 500);
 
+    // AbortController para cancelar el fetch si supera el timeout
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+
     try {
-      const res  = await fetch("/api/inventory");
+      const res = await fetch("/api/inventory", { signal: controller.signal });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status} – ${res.statusText}`);
+
       const json = await res.json();
 
       const filtered = (json as InventoryItem[]).filter((item) =>
@@ -271,11 +295,21 @@ export default function Home() {
 
       setData(filtered);
       saveToCache(filtered);
-    } catch (err) {
+
+    } catch (err: any) {
+      clearInterval(interval);
       console.error("Error fetching inventory:", err);
-      setLoadingMessage("Error al actualizar el inventario");
-      await new Promise((r) => setTimeout(r, 1200));
+
+      const isTimeout = err?.name === "AbortError";
+      const message   = isTimeout
+        ? `La solicitud tardó más de ${FETCH_TIMEOUT / 1000}s. Verifica que /api/inventory esté respondiendo.`
+        : `No se pudo cargar el inventario: ${err?.message ?? "error desconocido"}`;
+
+      setFetchError(message);
+      setLoadingMessage("Error al conectar con la API");
+
     } finally {
+      clearTimeout(timeoutId);
       clearInterval(interval);
       setLoading(false);
     }
@@ -399,18 +433,13 @@ export default function Home() {
   // Render guards
   // ─────────────────────────────────────────
 
-  if (!mounted) {
-    return (
-      <div className="min-h-screen bg-[var(--bg-dark)] flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-[var(--primary)] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-[var(--text-secondary)]">Cargando inventario...</p>
-        </div>
-      </div>
-    );
-  }
+  // Mostrar splash en TODOS estos casos:
+  // 1. Componente no hidratado aún (SSR)
+  // 2. Sesión verificándose (status === "loading")
+  // 3. Fetch de inventario activo
+  const showSplash = !mounted || status === "loading" || loading;
 
-  if (loading) {
+  if (showSplash) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--bg-dark)] overflow-hidden">
         {/* Decorativo */}
@@ -446,29 +475,64 @@ export default function Home() {
 
           {/* Card */}
           <div className="bg-[var(--bg-card)]/70 backdrop-blur-xl border border-[var(--border)] rounded-3xl p-8 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-[var(--text-primary)] font-medium text-lg">
-                Sincronizando recursos
-              </span>
-              <span className="text-[var(--primary)] font-bold text-xl">
-                {loadingProgress}%
-              </span>
-            </div>
+            {fetchError ? (
+              /* ── Estado de error ── */
+              <div className="text-center">
+                <div className="w-14 h-14 rounded-full bg-[var(--error)]/20 flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-7 h-7 text-[var(--error)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-[var(--error)] font-semibold text-lg mb-2">
+                  Error al cargar el inventario
+                </h3>
+                <p className="text-[var(--text-secondary)] text-sm mb-6 leading-relaxed">
+                  {fetchError}
+                </p>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={() => fetchInventory(true)}
+                    className="px-5 py-2.5 rounded-xl bg-[var(--primary)] text-white font-medium hover:opacity-90 transition-all"
+                  >
+                    Reintentar
+                  </button>
+                  <button
+                    onClick={() => signOut({ callbackUrl: "/login" })}
+                    className="px-5 py-2.5 rounded-xl bg-[var(--error)]/10 text-[var(--error)] border border-[var(--error)]/20 font-medium hover:bg-[var(--error)]/20 transition-all"
+                  >
+                    Cerrar sesión
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ── Estado de carga normal ── */
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-[var(--text-primary)] font-medium text-lg">
+                    Sincronizando recursos
+                  </span>
+                  <span className="text-[var(--primary)] font-bold text-xl">
+                    {loadingProgress}%
+                  </span>
+                </div>
 
-            {/* Barra de progreso */}
-            <div className="w-full h-5 bg-[var(--bg-dark)] rounded-full overflow-hidden border border-[var(--border)] mb-6">
-              <div
-                className="h-full rounded-full transition-all duration-500 ease-out"
-                style={{
-                  width: `${loadingProgress}%`,
-                  background: "linear-gradient(90deg, var(--gradient-start), var(--gradient-end))",
-                }}
-              />
-            </div>
+                {/* Barra de progreso */}
+                <div className="w-full h-5 bg-[var(--bg-dark)] rounded-full overflow-hidden border border-[var(--border)] mb-6">
+                  <div
+                    className="h-full rounded-full transition-all duration-500 ease-out"
+                    style={{
+                      width: `${loadingProgress}%`,
+                      background: "linear-gradient(90deg, var(--gradient-start), var(--gradient-end))",
+                    }}
+                  />
+                </div>
 
-            <p className="text-[var(--text-secondary)] text-sm text-center">
-              {loadingMessage}
-            </p>
+                <p className="text-[var(--text-secondary)] text-sm text-center">
+                  {loadingMessage}
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -552,7 +616,13 @@ export default function Home() {
                   Exportar
                 </button>
                 <button
-                  onClick={() => fetchInventory(true)}
+                  onClick={() => {
+                    setLoading(true);
+                    setLoadingProgress(0);
+                    setFetchError(null);
+                    setLoadingMessage("Conectando con AWS...");
+                    fetchInventory(true);
+                  }}
                   disabled={loading}
                   title="Actualizar inventario"
                   className="px-3 py-2 rounded-lg bg-[var(--info)]/10 text-[var(--info)] hover:bg-[var(--info)]/20 transition-all text-sm disabled:opacity-50"
@@ -560,8 +630,14 @@ export default function Home() {
                   {loading ? "..." : "⟳"}
                 </button>
                 <button
-                  onClick={clearCache}
-                  title="Limpiar caché"
+                  onClick={() => {
+                    setLoading(true);
+                    setLoadingProgress(0);
+                    setFetchError(null);
+                    setLoadingMessage("Limpiando caché...");
+                    clearCache();
+                  }}
+                  title="Limpiar caché y recargar"
                   className="px-3 py-2 rounded-lg bg-[var(--warning)]/10 text-[var(--warning)] hover:bg-[var(--warning)]/20 transition-all text-sm"
                 >
                   🗑️
