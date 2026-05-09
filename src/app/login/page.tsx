@@ -76,7 +76,7 @@ function Alert({ alert, onClose }: { alert: AlertMessage; onClose: () => void })
 
   const { border, icon, bg } = colors[alert.type];
 
-  const icons: Record<AlertType, JSX.Element> = {
+  const icons: Record<AlertType, React.ReactNode> = {
     error: (
       <svg width="20" height="20" fill="none" stroke={icon} strokeWidth="2" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="10"/>
