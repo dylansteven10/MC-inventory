@@ -20,6 +20,22 @@ import {
   getHuaweiECSInventory
 } from "@/lib/huawei/ecs";
 
+import {
+  getHuaweiRDSInventory
+} from "@/lib/huawei/rds";
+
+import {
+  getHuaweiVPCInventory
+} from "@/lib/huawei/vpc";
+
+import {
+  getHuaweiSubnetInventory
+} from "@/lib/huawei/subnet";
+
+import {
+  getHuaweiOBSInventory
+} from "@/lib/huawei/obs";
+
 const region = process.env.AWS_REGION || "us-east-1";
 
 /* ===============================
@@ -210,10 +226,28 @@ export async function GET() {
         });
       });
     }
-    const huaweiInventory =
+    const huaweiECS =
       await getHuaweiECSInventory();
 
-    inventory.push(...huaweiInventory);
+    const huaweiRDS =
+      await getHuaweiRDSInventory();
+
+    const huaweiVPC =
+      await getHuaweiVPCInventory();
+
+    const huaweiSubnet =
+      await getHuaweiSubnetInventory();
+
+    const huaweiOBS =
+      await getHuaweiOBSInventory();
+
+    inventory.push(
+      ...huaweiECS,
+      ...huaweiRDS,
+      ...huaweiVPC,
+      ...huaweiSubnet,
+      ...huaweiOBS
+    );
 
     return NextResponse.json(inventory);
   } catch (error) {

@@ -46,6 +46,7 @@ const ROLE_VISIBLE_SERVICES: Record<UserRole, string[]> = {
     "RDS",
     "S3",
     "VPC",
+    "OBS",
     "Subnet"
   ],
 
@@ -55,6 +56,7 @@ const ROLE_VISIBLE_SERVICES: Record<UserRole, string[]> = {
     "RDS",
     "S3",
     "VPC",
+    "OBS",
     "Subnet"
   ],
 
@@ -80,6 +82,7 @@ const SERVICE_COLORS: Record<string, string> = {
   VPC:    "bg-[var(--info)]/20      text-[var(--info)]      border-[var(--info)]",
   Subnet: "bg-[var(--accent)]/20    text-[var(--accent)]    border-[var(--accent)]",
   ECS:    "bg-[var(--primary)]/20   text-[var(--primary)]   border-[var(--primary)]",
+  OBS:    "bg-[var(--warning)]/20   text-[var(--warning)]   border-[var(--warning)]",
 };
 
 const LOADING_STEPS = [
@@ -96,12 +99,32 @@ const LOADING_STEPS = [
 // ─────────────────────────────────────────────
 
 function getStatusStyle(status: string): string {
+
   const s = status.toLowerCase();
-  if (["running", "available", "active"].includes(s))
+
+  if (
+    [
+      "running",
+      "available",
+      "active",
+      "ok"
+    ].includes(s)
+  ) {
     return "bg-[var(--success)]/20 text-[var(--success)]";
-  if (["stopped", "terminated"].includes(s))
+  }
+
+  if (
+    [
+      "stopped",
+      "terminated",
+      "shutoff"
+    ].includes(s)
+  ) {
     return "bg-[var(--error)]/20 text-[var(--error)]";
+  }
+
   return "bg-gray-500/20 text-gray-400";
+
 }
 
 function exportCSV(rows: InventoryItem[], filename: string): void {
@@ -174,8 +197,11 @@ export default function Home() {
   const [search,        setSearch]        = useState("");
   const [serviceFilter, setServiceFilter] = useState<string[]>([]);
   const [accountFilter, setAccountFilter] = useState<string[]>([]);
+  const [providerFilter, setProviderFilter] = useState<string[]>([]);
   const [osFilter,      setOsFilter]      = useState<string[]>([]);
   const [statusFilter,  setStatusFilter]  = useState<string[]>([]);
+  const [sortField, setSortField] = useState<keyof InventoryItem>("name");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   // ── Commands ──────────────────────────────
   const [selected,       setSelected]       = useState<string[]>([]);
@@ -347,37 +373,217 @@ export default function Home() {
   // Derived / memoized values
   // ─────────────────────────────────────────
 
-  const services = useMemo(
-    () => [...new Set(data.map((i) => i.service))].sort(),
-    [data]
-  );
+  const services = useMemo(() => {
 
-  const accounts = useMemo(
-    () => [...new Set(data.map((i) => i.accountName))].sort(),
-    [data]
-  );
+    return [
+
+      ...new Set(
+
+        data
+          .filter((item) => {
+
+            if (
+              providerFilter.length === 0
+            ) {
+              return true;
+            }
+
+            return providerFilter.includes(
+              item.provider ?? "AWS"
+            );
+
+          })
+          .map((item) => item.service)
+
+      )
+
+    ].sort();
+
+  }, [
+    data,
+    providerFilter
+  ]);
+
+  const accounts = useMemo(() => {
+
+    return [
+
+      ...new Set(
+
+        data
+          .filter((item) => {
+
+            const providerMatch =
+
+              providerFilter.length === 0 ||
+
+              providerFilter.includes(
+                item.provider ?? "AWS"
+              );
+
+            const serviceMatch =
+
+              serviceFilter.length === 0 ||
+
+              serviceFilter.includes(
+                item.service
+              );
+
+            return (
+              providerMatch &&
+              serviceMatch
+            );
+
+          })
+          .map((item) => item.accountName)
+
+      )
+
+    ].sort();
+
+  }, [
+    data,
+    providerFilter,
+    serviceFilter
+  ]);
 
   const providers = useMemo(
     () => [...new Set(data.map((i) => i.provider ?? "AWS"))].sort(),
     [data]
   );
 
+  useEffect(() => {
+
+    setServiceFilter((prev) =>
+
+      prev.filter((service) =>
+
+        services.includes(service)
+
+      )
+
+    );
+
+    setAccountFilter((prev) =>
+
+      prev.filter((account) =>
+
+        accounts.includes(account)
+
+      )
+
+    );
+
+  }, [
+    services,
+    accounts
+  ]);
+
   const filteredData = useMemo(() => {
-    return data.filter((item) => {
-      const q = search.toLowerCase();
+
+    const filtered = data.filter((item) => {
+
+      const q =
+        search.toLowerCase();
+
+      const normalizedStatus =
+        item.status.toLowerCase();
+
+      const searchMatch =
+        (item.name || "")
+          .toLowerCase()
+          .includes(q)
+
+        ||
+
+        (item.id || "")
+          .toLowerCase()
+          .includes(q);
+
+      const providerMatch =
+        providerFilter.length === 0 ||
+        providerFilter.includes(
+          item.provider ?? "AWS"
+        );
+
+      const serviceMatch =
+        serviceFilter.length === 0 ||
+        serviceFilter.includes(
+          item.service
+        );
+
+      const accountMatch =
+        accountFilter.length === 0 ||
+        accountFilter.includes(
+          item.accountName
+        );
+
+      const osMatch =
+        osFilter.length === 0 ||
+        osFilter.includes(
+          item.operatingSystem ?? "N/A"
+        );
+
+      const statusMatch =
+        statusFilter.length === 0 ||
+        statusFilter.includes(
+          normalizedStatus
+        );
+
       return (
-        (item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q)) &&
-        (serviceFilter.length === 0 || serviceFilter.includes(item.service)) &&
-        (accountFilter.length === 0 || accountFilter.includes(item.accountName)) &&
-        (osFilter.length      === 0 || osFilter.includes(item.operatingSystem ?? "N/A")) &&
-        (statusFilter.length  === 0 || statusFilter.includes(item.status.toLowerCase()))
+        searchMatch &&
+        providerMatch &&
+        serviceMatch &&
+        accountMatch &&
+        osMatch &&
+        statusMatch
       );
+
     });
-  }, [data, search, serviceFilter, accountFilter, osFilter, statusFilter]);
+
+    filtered.sort((a, b) => {
+
+      const aValue =
+        String(
+          a[sortField] ?? ""
+        ).toLowerCase();
+
+      const bValue =
+        String(
+          b[sortField] ?? ""
+        ).toLowerCase();
+
+      if (aValue < bValue)
+        return sortDirection === "asc"
+          ? -1
+          : 1;
+
+      if (aValue > bValue)
+        return sortDirection === "asc"
+          ? 1
+          : -1;
+
+      return 0;
+
+    });
+
+    return filtered;
+
+  }, [
+    data,
+    search,
+    providerFilter,
+    serviceFilter,
+    accountFilter,
+    osFilter,
+    statusFilter,
+    sortField,
+    sortDirection
+  ]);
 
   const total   = filteredData.length;
   const running = filteredData.filter((i) =>
-    ["running", "available", "active"].includes(i.status.toLowerCase())
+    ["running", "available", "active", "ok"].includes(i.status.toLowerCase())
   ).length;
   const stopped = total - running;
 
@@ -397,6 +603,7 @@ export default function Home() {
   const clearFilters = () => {
     setSearch("");
     setServiceFilter([]);
+    setProviderFilter([]);
     setAccountFilter([]);
     setOsFilter([]);
     setStatusFilter([]);
@@ -417,6 +624,27 @@ export default function Home() {
     setter((prev) =>
       prev.includes(value) ? prev.filter((i) => i !== value) : [...prev, value]
     );
+
+  const handleSort = (
+    field: keyof InventoryItem
+  ) => {
+
+    if (sortField === field) {
+
+      setSortDirection((prev) =>
+        prev === "asc"
+          ? "desc"
+          : "asc"
+      );
+
+    } else {
+
+      setSortField(field);
+      setSortDirection("asc");
+
+    }
+
+  };
 
   const runCommand = async (): Promise<void> => {
     if (!command.trim()) return;
@@ -792,6 +1020,32 @@ export default function Home() {
           {/* Panel de filtros */}
           {showFilters && (
             <div className="border-t border-[var(--border)] p-4 space-y-4">
+              {/* Ubicación */}
+              {providers.length > 0 && (
+                <div>
+                  <p className="text-xs text-[var(--text-secondary)] mb-2">
+                    Ubicación
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {providers.map((p) => (
+                      <button
+                        key={p}
+                        onClick={() =>
+                          toggleFilter(setProviderFilter, p)
+                        }
+                        className={`px-3 py-1 rounded-full text-xs transition-all ${
+                          providerFilter.includes(p)
+                            ? "bg-[var(--primary)] text-white"
+                            : "bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:bg-[var(--border)]"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {/* Servicios */}
               {services.length > 0 && (
                 <div>
@@ -840,7 +1094,15 @@ export default function Home() {
               <div>
                 <p className="text-xs text-[var(--text-secondary)] mb-2">Estado</p>
                 <div className="flex flex-wrap gap-2">
-                  {["running", "stopped"].map((s) => (
+                  {[
+                    "running",
+                    "active",
+                    "available",
+                    "ok",
+                    "stopped",
+                    "shutoff",
+                    "terminated"
+                  ].map((s) => (
                     <button
                       key={s}
                       onClick={() => toggleFilter(setStatusFilter, s)}
@@ -924,7 +1186,11 @@ export default function Home() {
                     <h3 className="font-semibold text-[var(--text-primary)]">{item.name}</h3>
                     <p className="text-xs text-[var(--text-secondary)] font-mono mt-1">{item.id}</p>
                   </div>
-                  {canExecute && item.service === "EC2" || item.service === "ECS" && (
+                  {canExecute &&
+                    (
+                      item.service === "EC2" ||
+                      item.service === "ECS"
+                    ) && (
                     <input
                       type="checkbox"
                       checked={
@@ -999,12 +1265,62 @@ export default function Home() {
                         />
                       </th>
                     )}
-                    {["Ubicación", "Cuenta", "Servicio", "Nombre", "ID", "Host", "Estado"].map((col) => (
+                    {[
+                      {
+                        label: "Ubicación",
+                        field: "provider"
+                      },
+                      {
+                        label: "Cuenta",
+                        field: "accountName"
+                      },
+                      {
+                        label: "Servicio",
+                        field: "service"
+                      },
+                      {
+                        label: "Nombre",
+                        field: "name"
+                      },
+                      {
+                        label: "ID",
+                        field: "id"
+                      },
+                      {
+                        label: "Host",
+                        field: "host"
+                      },
+                      {
+                        label: "Estado",
+                        field: "status"
+                      }
+                    ].map((col) => (
                       <th
-                        key={col}
-                        className="px-4 py-3 text-left text-xs font-medium text-[var(--text-secondary)]"
+                        key={col.label}
+                        onClick={() =>
+                          handleSort(
+                            col.field as keyof InventoryItem
+                          )
+                        }
+                        className="px-4 py-3 text-left text-xs font-medium text-[var(--text-secondary)] cursor-pointer hover:text-[var(--primary)] transition-all"
                       >
-                        {col}
+                        <div className="flex items-center gap-2">
+
+                          {col.label}
+
+                          {sortField === col.field && (
+
+                            <span className="text-[var(--primary)]">
+
+                              {sortDirection === "asc"
+                                ? "▲"
+                                : "▼"}
+
+                            </span>
+
+                          )}
+
+                        </div>
                       </th>
                     ))}
                   </tr>

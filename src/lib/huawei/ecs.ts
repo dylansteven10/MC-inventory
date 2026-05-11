@@ -1,134 +1,42 @@
-import axios from "axios";
-import crypto from "crypto";
-import https from "https";
+import {
+  huaweiRequest
+} from "./auth";
+
+import {
+  HUAWEI_ACCOUNT_MAP
+} from "@/lib/huawei/accounts";
 
 export async function getHuaweiECSInventory() {
 
   try {
 
-    const method = "GET";
+    const projectId =
+      process.env.HUAWEI_ACCOUNT_1_PROJECT_ID!;
 
-    const host =
-      "ecs.la-north-2.myhuaweicloud.com";
+    const data =
+      await huaweiRequest({
 
-    const uri =
-      `/v1/${process.env.HUAWEI_PROJECT_ID}/cloudservers/detail/`;
+        method: "GET",
 
-    const endpoint =
-      `https://${host}/v1/${process.env.HUAWEI_PROJECT_ID}/cloudservers/detail`;
+        host:
+          "ecs.la-north-2.myhuaweicloud.com",
 
-    const now = new Date();
-
-    const timestamp = now
-      .toISOString()
-      .replace(/[:-]|\.\d{3}/g, "");
-
-    const signedHeaders =
-      "content-type;host;x-project-id;x-sdk-content-sha256;x-sdk-date";
-
-    const canonicalRequest =
-`${method}
-${uri}
-
-content-type:application/json;charset=UTF-8
-host:${host}
-x-project-id:${process.env.HUAWEI_PROJECT_ID}
-x-sdk-content-sha256:UNSIGNED-PAYLOAD
-x-sdk-date:${timestamp}
-
-${signedHeaders}
-UNSIGNED-PAYLOAD`;
-
-    const hashedCanonicalRequest =
-      crypto
-        .createHash("sha256")
-        .update(canonicalRequest)
-        .digest("hex");
-
-    const stringToSign =
-`SDK-HMAC-SHA256
-${timestamp}
-${hashedCanonicalRequest}`;
-
-    const signature =
-      crypto
-        .createHmac(
-          "sha256",
-          process.env.HUAWEI_SK!
-        )
-        .update(stringToSign)
-        .digest("hex");
-
-    const authorization =
-`SDK-HMAC-SHA256 Access=${process.env.HUAWEI_AK}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-    const headers = {
-
-      "Content-Type":
-        "application/json;charset=UTF-8",
-
-      "Host":
-        host,
-
-      "X-Project-Id":
-        process.env.HUAWEI_PROJECT_ID!,
-
-      "X-Sdk-Date":
-        timestamp,
-
-      "X-Sdk-Content-Sha256":
-        "UNSIGNED-PAYLOAD",
-
-      "Authorization":
-        authorization
-
-    };
-
-    console.log(
-      "HUAWEI HEADERS:",
-      headers
-    );
-
-    const httpsAgent =
-      new https.Agent({
-
-        rejectUnauthorized: false
+        uri:
+          `/v1/${projectId}/cloudservers/detail`
 
       });
 
-    const response = await axios({
+    if (!data) {
 
-      method: "GET",
+      return [];
 
-      url: endpoint,
-
-      headers,
-
-      httpsAgent,
-
-      validateStatus: () => true
-
-    });
-
-    console.log(
-      "HUAWEI STATUS:",
-      response.status
-    );
-
-    console.log(
-      "HUAWEI RESPONSE:",
-      JSON.stringify(
-        response.data,
-        null,
-        2
-      )
-    );
+    }
 
     const servers =
-      response.data.servers || [];
+      data.servers || [];
 
     console.log(
-      "HUAWEI SERVERS COUNT:",
+      "HUAWEI ECS COUNT:",
       servers.length
     );
 
@@ -159,7 +67,7 @@ ${hashedCanonicalRequest}`;
         server.id || "N/A";
 
       const tenantId =
-        server.tenant_id || "N/A";
+        server.tenant_id || projectId;
 
       return {
 
@@ -170,7 +78,9 @@ ${hashedCanonicalRequest}`;
           "HUAWEI CLOUD",
 
         accountName:
-          "acc_qa",
+          HUAWEI_ACCOUNT_MAP[
+            tenantId
+          ] || "unknown",
 
         accountId:
           tenantId,
@@ -200,7 +110,7 @@ ${hashedCanonicalRequest}`;
   } catch (error: any) {
 
     console.error(
-      "HUAWEI FINAL ERROR:",
+      "HUAWEI ECS ERROR:",
       error?.response?.data || error
     );
 

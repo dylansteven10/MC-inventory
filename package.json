@@ -24,10 +24,12 @@
     "@upstash/redis": "^1.37.0",
     "axios": "^1.16.0",
     "crypto-js": "^4.2.0",
+    "esdk-obs-nodejs": "^3.26.2",
     "next": "16.1.6",
     "next-auth": "^4.24.13",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "xml2js": "^0.6.2",
     "xterm": "^5.3.0"
   },
   "devDependencies": {
@@ -35,6 +37,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/xml2js": "^0.4.14",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
