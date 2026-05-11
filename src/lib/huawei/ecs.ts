@@ -1,7 +1,5 @@
 import axios from "axios";
-
 import crypto from "crypto";
-
 import https from "https";
 
 export async function getHuaweiECSInventory() {
@@ -157,14 +155,25 @@ ${hashedCanonicalRequest}`;
 
       }
 
+      const serverId =
+        server.id || "N/A";
+
+      const tenantId =
+        server.tenant_id || "N/A";
+
       return {
+
+        uniqueKey:
+          `HUAWEI-${tenantId}-ECS-${serverId}`,
+
         provider:
           "HUAWEI CLOUD",
+
         accountName:
           "acc_qa",
 
         accountId:
-          server.tenant_id || "N/A",
+          tenantId,
 
         service:
           "ECS",
@@ -173,7 +182,7 @@ ${hashedCanonicalRequest}`;
           server.name || "N/A",
 
         id:
-          server.id || "N/A",
+          serverId,
 
         host:
           hostIp,

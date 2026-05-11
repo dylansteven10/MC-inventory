@@ -97,6 +97,7 @@ export async function GET() {
           const id = instance.InstanceId || "";
 
           inventory.push({
+            uniqueKey: `AWS-${accountId}-EC2-${id}`,
             provider: "AWS",
             accountName,
             accountId,
@@ -121,6 +122,7 @@ export async function GET() {
         const id = db.DBInstanceIdentifier || "";
 
         inventory.push({
+          uniqueKey: `AWS-${accountId}-RDS-${id}`,
           provider: "AWS",
           accountName,
           accountId,
@@ -144,6 +146,7 @@ export async function GET() {
         const id = bucket.Name || "";
 
         inventory.push({
+          uniqueKey: `AWS-${accountId}-S3-${id}`,
           provider: "AWS",
           accountName,
           accountId,
@@ -167,6 +170,7 @@ export async function GET() {
         const id = vpc.VpcId || "";
 
         inventory.push({
+          uniqueKey: `AWS-${accountId}-VPC-${id}`,
           provider: "AWS",
           accountName,
           accountId,
@@ -190,6 +194,7 @@ export async function GET() {
         const id = subnet.SubnetId || "";
 
         inventory.push({
+          uniqueKey: `AWS-${accountId}-Subnet-${id}`,
           provider: "AWS",
           accountName,
           accountId,

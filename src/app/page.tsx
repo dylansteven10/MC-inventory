@@ -10,6 +10,7 @@ import { useTheme } from "./providers/ThemeProvider";
 // ─────────────────────────────────────────────
 
 type InventoryItem = {
+  uniqueKey?: string;
   provider?: string;
   accountName: string;
   accountId: string;
@@ -381,11 +382,11 @@ export default function Home() {
   const stopped = total - running;
 
   const allEC2Ids =
-  filteredData.filter(
-    (i) =>
-      i.service === "EC2" ||
-      i.service === "ECS"
-  ).map((i) => i.id);
+    filteredData.filter(
+      (i) =>
+        i.service === "EC2" ||
+        i.service === "ECS"
+    ).map((i) => i.uniqueKey || i.id);
   const isAllSelected =
     allEC2Ids.length > 0 && allEC2Ids.every((id) => selected.includes(id));
 
@@ -425,7 +426,7 @@ export default function Home() {
     }
 
     const instances = data
-      .filter((i) => selected.includes(i.id) && i.service === "EC2" && i.status === "running")
+      .filter((i) => selected.includes(i.uniqueKey || i.id) && i.service === "EC2" && i.status === "running")
       .map((i) => ({ instanceId: i.id, accountId: i.accountId }));
 
     if (!instances.length) {
@@ -915,7 +916,7 @@ export default function Home() {
           <div className="space-y-4">
             {filteredData.map((item) => (
               <div
-                key={`${item.accountId}-${item.id}`}
+                key={item.uniqueKey || `${item.accountId}-${item.service}-${item.id}`}
                 className="bg-[var(--bg-card)]/50 rounded-xl border border-[var(--border)] p-4"
               >
                 <div className="flex justify-between items-start mb-3">
@@ -926,8 +927,16 @@ export default function Home() {
                   {canExecute && item.service === "EC2" || item.service === "ECS" && (
                     <input
                       type="checkbox"
-                      checked={selected.includes(item.id)}
-                      onChange={() => toggleSelect(item.id)}
+                      checked={
+                        selected.includes(
+                          item.uniqueKey || item.id
+                        )
+                      }
+                      onChange={() =>
+                        toggleSelect(
+                          item.uniqueKey || item.id
+                        )
+                      }
                       className="w-5 h-5 rounded border-[var(--border)] bg-[var(--bg-dark)] accent-[var(--primary)]"
                     />
                   )}
@@ -1003,7 +1012,7 @@ export default function Home() {
                 <tbody className="divide-y divide-[var(--border)]">
                   {filteredData.map((item) => (
                     <tr
-                      key={`${item.accountId}-${item.id}`}
+                      key={item.uniqueKey || `${item.accountId}-${item.service}-${item.id}`}
                       className="hover:bg-[var(--bg-hover)]/50 transition-colors"
                     >
                       {canExecute && (
@@ -1011,8 +1020,16 @@ export default function Home() {
                           {item.service === "EC2" && (
                             <input
                               type="checkbox"
-                              checked={selected.includes(item.id)}
-                              onChange={() => toggleSelect(item.id)}
+                              checked={
+                                selected.includes(
+                                  item.uniqueKey || item.id
+                                )
+                              }
+                              onChange={() =>
+                                toggleSelect(
+                                  item.uniqueKey || item.id
+                                )
+                              }
                               className="rounded border-[var(--border)] bg-[var(--bg-dark)] accent-[var(--primary)]"
                             />
                           )}
