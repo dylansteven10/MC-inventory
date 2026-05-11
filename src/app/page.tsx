@@ -10,6 +10,7 @@ import { useTheme } from "./providers/ThemeProvider";
 // ─────────────────────────────────────────────
 
 type InventoryItem = {
+  provider?: string;
   accountName: string;
   accountId: string;
   service: string;
@@ -37,11 +38,36 @@ const CACHE_TTL_MS   = 5 * 60 * 1000;  // 5 minutos
 const FETCH_TIMEOUT  = 30_000;          // 30 segundos máximo de espera
 
 const ROLE_VISIBLE_SERVICES: Record<UserRole, string[]> = {
-  admin:             ["EC2", "RDS", "S3", "VPC", "Subnet"],
-  infraestructura:   ["EC2", "RDS", "S3", "VPC", "Subnet"],
-  telecomunicaciones:["VPC", "Subnet"],
-  basedatos:         ["RDS"],
-  seguridad:         [],
+
+  admin: [
+    "EC2",
+    "ECS",
+    "RDS",
+    "S3",
+    "VPC",
+    "Subnet"
+  ],
+
+  infraestructura: [
+    "EC2",
+    "ECS",
+    "RDS",
+    "S3",
+    "VPC",
+    "Subnet"
+  ],
+
+  telecomunicaciones: [
+    "VPC",
+    "Subnet"
+  ],
+
+  basedatos: [
+    "RDS"
+  ],
+
+  seguridad: [],
+
 };
 
 const ROLES_CAN_EXECUTE: UserRole[] = ["admin", "infraestructura"];
@@ -52,6 +78,7 @@ const SERVICE_COLORS: Record<string, string> = {
   S3:     "bg-[var(--warning)]/20   text-[var(--warning)]   border-[var(--warning)]",
   VPC:    "bg-[var(--info)]/20      text-[var(--info)]      border-[var(--info)]",
   Subnet: "bg-[var(--accent)]/20    text-[var(--accent)]    border-[var(--accent)]",
+  ECS:    "bg-[var(--primary)]/20   text-[var(--primary)]   border-[var(--primary)]",
 };
 
 const LOADING_STEPS = [
@@ -77,11 +104,11 @@ function getStatusStyle(status: string): string {
 }
 
 function exportCSV(rows: InventoryItem[], filename: string): void {
-  const headers = ["Account", "Service", "Name", "ID", "Host", "OS", "Status"];
+  const headers = ["Provider", "Account", "Service", "Name", "ID", "Host", "OS", "Status"];
   const csv = [
     headers.join(","),
     ...rows.map((r) =>
-      [r.accountName, r.service, r.name, r.id, r.host, r.operatingSystem ?? "N/A", r.status]
+      [r.provider ?? "AWS", r.accountName, r.service, r.name, r.id, r.host, r.operatingSystem ?? "N/A", r.status]
         .map((v) => `"${v}"`)
         .join(",")
     ),
@@ -329,6 +356,11 @@ export default function Home() {
     [data]
   );
 
+  const providers = useMemo(
+    () => [...new Set(data.map((i) => i.provider ?? "AWS"))].sort(),
+    [data]
+  );
+
   const filteredData = useMemo(() => {
     return data.filter((item) => {
       const q = search.toLowerCase();
@@ -348,7 +380,12 @@ export default function Home() {
   ).length;
   const stopped = total - running;
 
-  const allEC2Ids    = filteredData.filter((i) => i.service === "EC2").map((i) => i.id);
+  const allEC2Ids =
+  filteredData.filter(
+    (i) =>
+      i.service === "EC2" ||
+      i.service === "ECS"
+  ).map((i) => i.id);
   const isAllSelected =
     allEC2Ids.length > 0 && allEC2Ids.every((id) => selected.includes(id));
 
@@ -886,7 +923,7 @@ export default function Home() {
                     <h3 className="font-semibold text-[var(--text-primary)]">{item.name}</h3>
                     <p className="text-xs text-[var(--text-secondary)] font-mono mt-1">{item.id}</p>
                   </div>
-                  {canExecute && item.service === "EC2" && (
+                  {canExecute && item.service === "EC2" || item.service === "ECS" && (
                     <input
                       type="checkbox"
                       checked={selected.includes(item.id)}
@@ -898,8 +935,16 @@ export default function Home() {
 
                 <div className="grid grid-cols-2 gap-2 text-sm mb-3">
                   <div>
+                    <p className="text-xs text-[var(--text-secondary)]">Ubicación</p>
+                    <p className="text-[var(--text-primary)]">
+                      {item.provider ?? "AWS"}
+                    </p>
+                  </div>
+                  <div>
                     <p className="text-xs text-[var(--text-secondary)]">Cuenta</p>
-                    <p className="text-[var(--text-primary)]">{item.accountName}</p>
+                    <p className="text-[var(--text-primary)]">
+                      {item.accountName}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-[var(--text-secondary)]">Servicio</p>
@@ -945,7 +990,7 @@ export default function Home() {
                         />
                       </th>
                     )}
-                    {["Cuenta", "Servicio", "Nombre", "ID", "Host", "Estado"].map((col) => (
+                    {["Ubicación", "Cuenta", "Servicio", "Nombre", "ID", "Host", "Estado"].map((col) => (
                       <th
                         key={col}
                         className="px-4 py-3 text-left text-xs font-medium text-[var(--text-secondary)]"
@@ -973,7 +1018,13 @@ export default function Home() {
                           )}
                         </td>
                       )}
-                      <td className="px-4 py-3 text-sm text-[var(--text-primary)]">{item.accountName}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-[var(--primary)]">
+                        {item.provider ?? "AWS"}
+                      </td>
+
+                      <td className="px-4 py-3 text-sm text-[var(--text-primary)]">
+                        {item.accountName}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`inline-block px-2 py-1 rounded text-xs ${SERVICE_COLORS[item.service] ?? "bg-gray-500/20 text-gray-400"}`}>
                           {item.service}

@@ -16,6 +16,10 @@ import { CloudFrontClient } from "@aws-sdk/client-cloudfront";
 import { S3Client, ListBucketsCommand } from "@aws-sdk/client-s3";
 import { ElasticLoadBalancingV2Client } from "@aws-sdk/client-elastic-load-balancing-v2";
 
+import {
+  getHuaweiECSInventory
+} from "@/lib/huawei/ecs";
+
 const region = process.env.AWS_REGION || "us-east-1";
 
 /* ===============================
@@ -93,6 +97,7 @@ export async function GET() {
           const id = instance.InstanceId || "";
 
           inventory.push({
+            provider: "AWS",
             accountName,
             accountId,
             service: "EC2",
@@ -116,6 +121,7 @@ export async function GET() {
         const id = db.DBInstanceIdentifier || "";
 
         inventory.push({
+          provider: "AWS",
           accountName,
           accountId,
           service: "RDS",
@@ -138,6 +144,7 @@ export async function GET() {
         const id = bucket.Name || "";
 
         inventory.push({
+          provider: "AWS",
           accountName,
           accountId,
           service: "S3",
@@ -160,6 +167,7 @@ export async function GET() {
         const id = vpc.VpcId || "";
 
         inventory.push({
+          provider: "AWS",
           accountName,
           accountId,
           service: "VPC",
@@ -182,6 +190,7 @@ export async function GET() {
         const id = subnet.SubnetId || "";
 
         inventory.push({
+          provider: "AWS",
           accountName,
           accountId,
           service: "Subnet",
@@ -196,6 +205,10 @@ export async function GET() {
         });
       });
     }
+    const huaweiInventory =
+      await getHuaweiECSInventory();
+
+    inventory.push(...huaweiInventory);
 
     return NextResponse.json(inventory);
   } catch (error) {
