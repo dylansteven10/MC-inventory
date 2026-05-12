@@ -3,126 +3,149 @@ import {
 } from "./auth";
 
 import {
-  HUAWEI_ACCOUNT_MAP
-} from "@/lib/huawei/accounts";
+  getHuaweiAccounts
+} from "./accounts";
 
-import { getHuaweiTags } from "./tags";
+import {
+  getHuaweiTags
+} from "./tags";
 
 export async function getHuaweiECSInventory() {
 
   try {
 
-    const projectId =
-      process.env.HUAWEI_ACCOUNT_1_PROJECT_ID!;
+    const accounts =
+      getHuaweiAccounts();
 
-    const data =
-      await huaweiRequest({
+    const inventory =
+      await Promise.all(
 
-        method: "GET",
+        accounts.map(async (account) => {
 
-        host:
-          "ecs.la-north-2.myhuaweicloud.com",
+          const data =
+            await huaweiRequest({
 
-        uri:
-          `/v1/${projectId}/cloudservers/detail`
+              method: "GET",
 
-      });
+              host:
+                "ecs.la-north-2.myhuaweicloud.com",
 
-    if (!data) {
+              uri:
+                `/v1/${account.projectId}/cloudservers/detail`,
 
-      return [];
+              ak:
+                account.ak,
 
-    }
+              sk:
+                account.sk,
 
-    const servers =
-      data.servers || [];
+              projectId:
+                account.projectId
 
-    console.log(
-      "HUAWEI ECS COUNT:",
-      servers.length
-    );
+            });
 
-    return await Promise.all(
+          if (!data) {
 
-      servers.map(async (server: any) => {
+            return [];
 
-      let hostIp = "N/A";
+          }
 
-      if (server.addresses) {
+          const servers =
+            data.servers || [];
 
-        const networks =
-          Object.values(
-            server.addresses
-          ) as any[];
+          return await Promise.all(
 
-        if (
-          networks.length > 0 &&
-          networks[0].length > 0
-        ) {
+            servers.map(async (server: any) => {
 
-          hostIp =
-            networks[0][0]?.addr || "N/A";
+              let hostIp = "N/A";
 
-        }
+              if (server.addresses) {
 
-      }
+                const networks =
+                  Object.values(
+                    server.addresses
+                  ) as any[];
 
-      const serverId =
-        server.id || "N/A";
+                if (
+                  networks.length > 0 &&
+                  networks[0].length > 0
+                ) {
 
-      const tenantId =
-        server.tenant_id || projectId;
+                  hostIp =
+                    networks[0][0]?.addr || "N/A";
 
-      const tags =
-        await getHuaweiTags({
+                }
 
-          host:
-            "ecs.la-north-2.myhuaweicloud.com",
+              }
 
-          uri:
-            `/v1/${tenantId}/cloudservers/${serverId}/tags`
+              const serverId =
+                server.id || "N/A";
 
-        });
+              const tags =
+                await getHuaweiTags({
 
-      return {
+                  host:
+                    "ecs.la-north-2.myhuaweicloud.com",
 
-        uniqueKey:
-          `HUAWEI-${tenantId}-ECS-${serverId}`,
+                  uri:
+                    `/v1/${account.projectId}/cloudservers/${serverId}/tags`,
 
-        provider:
-          "HUAWEI CLOUD",
+                  ak:
+                    account.ak,
 
-        accountName:
-          HUAWEI_ACCOUNT_MAP[
-            tenantId
-          ] || "unknown",
+                  sk:
+                    account.sk,
 
-        accountId:
-          tenantId,
+                  projectId:
+                    account.projectId
 
-        service:
-          "ECS",
+                });
 
-        name:
-          server.name || "N/A",
+              return {
 
-        id:
-          serverId,
+                uniqueKey:
+                  `HUAWEI-${account.projectId}-ECS-${serverId}`,
 
-        host:
-          hostIp,
+                provider:
+                  "HUAWEI CLOUD",
 
-        status:
-          server.status || "UNKNOWN",
+                accountName:
+                  account.name,
 
-        operatingSystem:
-          "Linux",
+                accountId:
+                  account.projectId,
 
-        tags
+                service:
+                  "ECS",
 
-      };
+                name:
+                  server.name || "N/A",
 
-    }));
+                id:
+                  serverId,
+
+                host:
+                  hostIp,
+
+                status:
+                  server.status || "UNKNOWN",
+
+                operatingSystem:
+                  "Linux",
+
+                tags
+
+              };
+
+            })
+
+          );
+
+        })
+
+      );
+
+    return inventory.flat();
 
   } catch (error: any) {
 

@@ -3,8 +3,8 @@ import {
 } from "./auth";
 
 import {
-  HUAWEI_ACCOUNT_MAP
-} from "@/lib/huawei/accounts";
+  getHuaweiAccounts
+} from "./accounts";
 
 import {
   getHuaweiTags
@@ -14,95 +14,117 @@ export async function getHuaweiRDSInventory() {
 
   try {
 
-    const projectId =
-      process.env.HUAWEI_ACCOUNT_1_PROJECT_ID!;
+    const accounts =
+      getHuaweiAccounts();
 
-    const data =
-      await huaweiRequest({
+    const inventory =
+      await Promise.all(
 
-        method: "GET",
+        accounts.map(async (account) => {
 
-        host:
-          "rds.la-north-2.myhuaweicloud.com",
+          const data =
+            await huaweiRequest({
 
-        uri:
-          `/v3/${projectId}/instances`
+              method: "GET",
 
-      });
+              host:
+                "rds.la-north-2.myhuaweicloud.com",
 
-    if (!data) {
+              uri:
+                `/v3/${account.projectId}/instances`,
 
-      return [];
+              ak:
+                account.ak,
 
-    }
+              sk:
+                account.sk,
 
-    const instances =
-      data.instances || [];
+              projectId:
+                account.projectId
 
-    console.log(
-      "HUAWEI RDS COUNT:",
-      instances.length
-    );
+            });
 
-    return await Promise.all(
+          if (!data) {
 
-      instances.map(async (db: any) => {
+            return [];
 
-        const dbId =
-          db.id || "N/A";
+          }
 
-        const tags =
-          await getHuaweiTags({
+          const instances =
+            data.instances || [];
 
-            host:
-              "rds.la-north-2.myhuaweicloud.com",
+          return await Promise.all(
 
-            uri:
-              `/v3/${projectId}/instances/${dbId}/tags`
+            instances.map(async (db: any) => {
 
-          });
+              const dbId =
+                db.id || "N/A";
 
-        return {
+              const tags =
+                await getHuaweiTags({
 
-          uniqueKey:
-            `HUAWEI-${projectId}-RDS-${dbId}`,
+                  host:
+                    "rds.la-north-2.myhuaweicloud.com",
 
-          provider:
-            "HUAWEI CLOUD",
+                  uri:
+                    `/v3/${account.projectId}/instances/${dbId}/tags`,
 
-          accountName:
-            HUAWEI_ACCOUNT_MAP[
-              projectId
-            ] || "unknown",
+                  ak:
+                    account.ak,
 
-          accountId:
-            projectId,
+                  sk:
+                    account.sk,
 
-          service:
-            "RDS",
+                  projectId:
+                    account.projectId
 
-          name:
-            db.name || "N/A",
+                });
 
-          id:
-            dbId,
+              return {
 
-          host:
-            db.private_ips?.[0] || "N/A",
+                uniqueKey:
+                  `HUAWEI-${account.projectId}-RDS-${dbId}`,
 
-          status:
-            db.status || "UNKNOWN",
+                provider:
+                  "HUAWEI CLOUD",
 
-          operatingSystem:
-            `${db.datastore?.type || "RDS"} ${db.datastore?.version || ""}`,
+                accountName:
+                  account.name,
 
-          tags
+                accountId:
+                  account.projectId,
 
-        };
+                service:
+                  "RDS",
 
-      })
+                name:
+                  db.name || "N/A",
 
-    );
+                id:
+                  dbId,
+
+                host:
+                  db.private_ips?.[0] || "N/A",
+
+                status:
+                  db.status || "UNKNOWN",
+
+                operatingSystem:
+                  `${db.datastore?.type || "RDS"} ${db.datastore?.version || ""}`,
+
+                tags
+
+              };
+
+            })
+
+          );
+
+        })
+
+      );
+
+    return inventory.flat();
 
   } catch (error: any) {
 

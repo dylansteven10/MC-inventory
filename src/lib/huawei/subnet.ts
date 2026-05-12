@@ -3,7 +3,7 @@ import {
 } from "./auth";
 
 import {
-  HUAWEI_ACCOUNT_MAP
+  getHuaweiAccounts
 } from "@/lib/huawei/accounts";
 
 import {
@@ -14,98 +14,120 @@ export async function getHuaweiSubnetInventory() {
 
   try {
 
-    const projectId =
-      process.env.HUAWEI_ACCOUNT_1_PROJECT_ID!;
+    const accounts =
+      getHuaweiAccounts();
 
-    const data =
-      await huaweiRequest({
+    const inventory =
+      await Promise.all(
 
-        method: "GET",
+        accounts.map(async (account) => {
 
-        host:
-          "vpc.la-north-2.myhuaweicloud.com",
+          const data =
+            await huaweiRequest({
 
-        uri:
-          `/v1/${projectId}/subnets`
+              method: "GET",
 
-      });
+              host:
+                "vpc.la-north-2.myhuaweicloud.com",
 
-    if (!data) {
+              uri:
+                `/v1/${account.projectId}/subnets`,
 
-      return [];
+              ak:
+                account.ak,
 
-    }
+              sk:
+                account.sk,
 
-    const subnets =
-      data.subnets || [];
+              projectId:
+                account.projectId
 
-    console.log(
-      "HUAWEI SUBNET COUNT:",
-      subnets.length
-    );
+            });
 
-    return await Promise.all(
+          if (!data) {
 
-      subnets.map(async (subnet: any) => {
+            return [];
 
-        const tenantId =
-          subnet.tenant_id || projectId;
+          }
 
-        const subnetId =
-          subnet.id || "N/A";
+          const subnets =
+            data.subnets || [];
 
-        const tags =
-          await getHuaweiTags({
+          return await Promise.all(
 
-            host:
-              "vpc.la-north-2.myhuaweicloud.com",
+            subnets.map(async (subnet: any) => {
 
-            uri:
-              `/v2.0/${tenantId}/subnets/${subnetId}/tags`
+              const tenantId =
+                subnet.tenant_id || account.projectId;
 
-          });
+              const subnetId =
+                subnet.id || "N/A";
 
-        return {
+              const tags =
+                await getHuaweiTags({
 
-          uniqueKey:
-            `HUAWEI-${tenantId}-SUBNET-${subnetId}`,
+                  host:
+                    "vpc.la-north-2.myhuaweicloud.com",
 
-          provider:
-            "HUAWEI CLOUD",
+                  uri:
+                    `/v2.0/${tenantId}/subnets/${subnetId}/tags`,
 
-          accountName:
-            HUAWEI_ACCOUNT_MAP[
-              tenantId
-            ] || "unknown",
+                  ak:
+                    account.ak,
 
-          accountId:
-            tenantId,
+                  sk:
+                    account.sk,
 
-          service:
-            "Subnet",
+                  projectId:
+                    account.projectId
 
-          name:
-            subnet.name || "N/A",
+                });
 
-          id:
-            subnetId,
+              return {
 
-          host:
-            subnet.cidr || "N/A",
+                uniqueKey:
+                  `HUAWEI-${tenantId}-SUBNET-${subnetId}`,
 
-          status:
-            subnet.status || "UNKNOWN",
+                provider:
+                  "HUAWEI CLOUD",
 
-          operatingSystem:
-            "N/A",
+                accountName:
+                  account.name,
 
-          tags
+                accountId:
+                  tenantId,
 
-        };
+                service:
+                  "Subnet",
 
-      })
+                name:
+                  subnet.name || "N/A",
 
-    );
+                id:
+                  subnetId,
+
+                host:
+                  subnet.cidr || "N/A",
+
+                status:
+                  subnet.status || "UNKNOWN",
+
+                operatingSystem:
+                  "N/A",
+
+                tags
+
+              };
+
+            })
+
+          );
+
+        })
+
+      );
+
+    return inventory.flat();
 
   } catch (error: any) {
 

@@ -1,63 +1,65 @@
 export type HuaweiAccount = {
-
   name: string;
-
   projectId: string;
-
   ak: string;
-
   sk: string;
-
 };
 
 // ─────────────────────────────────────────────
-// Lista completa de cuentas Huawei
+// Obtener cuentas dinámicamente desde .env
 // ─────────────────────────────────────────────
 
-export const HUAWEI_ACCOUNTS: HuaweiAccount[] = [
+export function getHuaweiAccounts(): HuaweiAccount[] {
 
-  {
-    name:
-      process.env.HUAWEI_ACCOUNT_1_NAME!,
+  const accounts: HuaweiAccount[] = [];
 
-    projectId:
-      process.env.HUAWEI_ACCOUNT_1_PROJECT_ID!,
+  let index = 1;
 
-    ak:
-      process.env.HUAWEI_ACCOUNT_1_AK!,
+  while (true) {
 
-    sk:
-      process.env.HUAWEI_ACCOUNT_1_SK!,
-  },
+    const name =
+      process.env[`HUAWEI_ACCOUNT_${index}_NAME`];
 
-  // ─────────────────────────────────────
-  // Futuras cuentas
-  // ─────────────────────────────────────
-  //
-  // {
-  //   name:
-  //     process.env.HUAWEI_ACCOUNT_2_NAME!,
-  //
-  //   projectId:
-  //     process.env.HUAWEI_ACCOUNT_2_PROJECT_ID!,
-  //
-  //   ak:
-  //     process.env.HUAWEI_ACCOUNT_2_AK!,
-  //
-  //   sk:
-  //     process.env.HUAWEI_ACCOUNT_2_SK!,
-  // },
+    const projectId =
+      process.env[`HUAWEI_ACCOUNT_${index}_PROJECT_ID`];
 
-];
+    const ak =
+      process.env[`HUAWEI_ACCOUNT_${index}_AK`];
+
+    const sk =
+      process.env[`HUAWEI_ACCOUNT_${index}_SK`];
+
+    if (
+      !name ||
+      !projectId ||
+      !ak ||
+      !sk
+    ) {
+      break;
+    }
+
+    accounts.push({
+      name,
+      projectId,
+      ak,
+      sk
+    });
+
+    index++;
+
+  }
+
+  return accounts;
+
+}
 
 // ─────────────────────────────────────────────
-// Helper:
-// Convierte projectId → nombre de cuenta
+// Helper map
 // ─────────────────────────────────────────────
 
 export const HUAWEI_ACCOUNT_MAP: Record<string, string> =
 
-  HUAWEI_ACCOUNTS.reduce(
+  getHuaweiAccounts().reduce(
 
     (acc, account) => {
 

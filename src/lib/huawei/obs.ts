@@ -1,93 +1,102 @@
 import ObsClient from "esdk-obs-nodejs";
 
 import {
-  HUAWEI_ACCOUNT_MAP
+  getHuaweiAccounts
 } from "@/lib/huawei/accounts";
 
 export async function getHuaweiOBSInventory() {
 
   try {
 
-    const projectId =
-      process.env.HUAWEI_ACCOUNT_1_PROJECT_ID!;
+    const accounts =
+      getHuaweiAccounts();
 
-    const obsClient =
-      new ObsClient({
+    const inventory =
+      await Promise.all(
 
-        access_key_id:
-          process.env.HUAWEI_ACCOUNT_1_AK!,
+        accounts.map(async (account) => {
 
-        secret_access_key:
-          process.env.HUAWEI_ACCOUNT_1_SK!,
+          const obsClient =
+            new ObsClient({
 
-        server:
-          "https://obs.la-north-2.myhuaweicloud.com"
+              access_key_id:
+                account.ak,
 
-      });
+              secret_access_key:
+                account.sk,
 
-    const result =
-      await obsClient.listBuckets();
+              server:
+                "https://obs.la-north-2.myhuaweicloud.com"
 
-    console.log(
-      "HUAWEI OBS STATUS:",
-      result.CommonMsg.Status
-    );
+            });
 
-    const buckets =
-      result.InterfaceResult?.Buckets || [];
+          const result =
+            await obsClient.listBuckets();
 
-    console.log(
-      "HUAWEI OBS COUNT:",
-      buckets.length
-    );
+          console.log(
+            `HUAWEI OBS STATUS (${account.name}):`,
+            result.CommonMsg.Status
+          );
 
-    return buckets.map((bucket: any) => {
+          const buckets =
+            result.InterfaceResult?.Buckets || [];
 
-      const bucketName =
-        bucket.BucketName ||
-        bucket.Name ||
-        bucket.name ||
-        "unknown-bucket";
+          console.log(
+            `HUAWEI OBS COUNT (${account.name}):`,
+            buckets.length
+          );
 
-      return {
+          return buckets.map((bucket: any) => {
 
-        uniqueKey:
-          `HUAWEI-OBS-${bucketName}`,
+            const bucketName =
+              bucket.BucketName ||
+              bucket.Name ||
+              bucket.name ||
+              "unknown-bucket";
 
-        provider:
-          "HUAWEI CLOUD",
+            return {
 
-        accountName:
-          HUAWEI_ACCOUNT_MAP[
-            projectId
-          ] || "unknown",
+              uniqueKey:
+                `HUAWEI-${account.projectId}-OBS-${bucketName}`,
 
-        accountId:
-          projectId,
+              provider:
+                "HUAWEI CLOUD",
 
-        service:
-          "OBS",
+              accountName:
+                account.name,
 
-        name:
-          bucketName,
+              accountId:
+                account.projectId,
 
-        id:
-          bucketName,
+              service:
+                "OBS",
 
-        host:
-          "N/A",
+              name:
+                bucketName,
 
-        status:
-          "available",
+              id:
+                bucketName,
 
-        operatingSystem:
-          "N/A",
+              host:
+                "N/A",
 
-        tags: {}
+              status:
+                "available",
 
-      };
+              operatingSystem:
+                "N/A",
 
-    });
+              tags: {}
+
+            };
+
+          });
+
+        })
+
+      );
+
+    return inventory.flat();
 
   } catch (error: any) {
 

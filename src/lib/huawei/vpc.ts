@@ -3,7 +3,7 @@ import {
 } from "./auth";
 
 import {
-  HUAWEI_ACCOUNT_MAP
+  getHuaweiAccounts
 } from "@/lib/huawei/accounts";
 
 import {
@@ -14,98 +14,120 @@ export async function getHuaweiVPCInventory() {
 
   try {
 
-    const projectId =
-      process.env.HUAWEI_ACCOUNT_1_PROJECT_ID!;
+    const accounts =
+      getHuaweiAccounts();
 
-    const data =
-      await huaweiRequest({
+    const inventory =
+      await Promise.all(
 
-        method: "GET",
+        accounts.map(async (account) => {
 
-        host:
-          "vpc.la-north-2.myhuaweicloud.com",
+          const data =
+            await huaweiRequest({
 
-        uri:
-          `/v1/${projectId}/vpcs`
+              method: "GET",
 
-      });
+              host:
+                "vpc.la-north-2.myhuaweicloud.com",
 
-    if (!data) {
+              uri:
+                `/v1/${account.projectId}/vpcs`,
 
-      return [];
+              ak:
+                account.ak,
 
-    }
+              sk:
+                account.sk,
 
-    const vpcs =
-      data.vpcs || [];
+              projectId:
+                account.projectId
 
-    console.log(
-      "HUAWEI VPC COUNT:",
-      vpcs.length
-    );
+            });
 
-    return await Promise.all(
+          if (!data) {
 
-      vpcs.map(async (vpc: any) => {
+            return [];
 
-        const tenantId =
-          vpc.tenant_id || projectId;
+          }
 
-        const vpcId =
-          vpc.id || "N/A";
+          const vpcs =
+            data.vpcs || [];
 
-        const tags =
-          await getHuaweiTags({
+          return await Promise.all(
 
-            host:
-              "vpc.la-north-2.myhuaweicloud.com",
+            vpcs.map(async (vpc: any) => {
 
-            uri:
-              `/v2.0/${tenantId}/vpcs/${vpcId}/tags`
+              const tenantId =
+                vpc.tenant_id || account.projectId;
 
-          });
+              const vpcId =
+                vpc.id || "N/A";
 
-        return {
+              const tags =
+                await getHuaweiTags({
 
-          uniqueKey:
-            `HUAWEI-${tenantId}-VPC-${vpcId}`,
+                  host:
+                    "vpc.la-north-2.myhuaweicloud.com",
 
-          provider:
-            "HUAWEI CLOUD",
+                  uri:
+                    `/v2.0/${tenantId}/vpcs/${vpcId}/tags`,
 
-          accountName:
-            HUAWEI_ACCOUNT_MAP[
-              tenantId
-            ] || "unknown",
+                  ak:
+                    account.ak,
 
-          accountId:
-            tenantId,
+                  sk:
+                    account.sk,
 
-          service:
-            "VPC",
+                  projectId:
+                    account.projectId
 
-          name:
-            vpc.name || "N/A",
+                });
 
-          id:
-            vpcId,
+              return {
 
-          host:
-            vpc.cidr || "N/A",
+                uniqueKey:
+                  `HUAWEI-${tenantId}-VPC-${vpcId}`,
 
-          status:
-            vpc.status || "UNKNOWN",
+                provider:
+                  "HUAWEI CLOUD",
 
-          operatingSystem:
-            "N/A",
+                accountName:
+                  account.name,
 
-          tags
+                accountId:
+                  tenantId,
 
-        };
+                service:
+                  "VPC",
 
-      })
+                name:
+                  vpc.name || "N/A",
 
-    );
+                id:
+                  vpcId,
+
+                host:
+                  vpc.cidr || "N/A",
+
+                status:
+                  vpc.status || "UNKNOWN",
+
+                operatingSystem:
+                  "N/A",
+
+                tags
+
+              };
+
+            })
+
+          );
+
+        })
+
+      );
+
+    return inventory.flat();
 
   } catch (error: any) {
 

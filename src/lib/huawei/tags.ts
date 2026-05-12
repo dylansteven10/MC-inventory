@@ -5,14 +5,22 @@ import {
 export async function getHuaweiTags({
 
   host,
-
-  uri
+  uri,
+  ak,
+  sk,
+  projectId
 
 }: {
 
   host: string;
 
   uri: string;
+
+  ak: string;
+
+  sk: string;
+
+  projectId: string;
 
 }) {
 
@@ -25,7 +33,13 @@ export async function getHuaweiTags({
 
         host,
 
-        uri
+        uri,
+
+        ak,
+
+        sk,
+
+        projectId
 
       });
 
@@ -42,7 +56,6 @@ export async function getHuaweiTags({
 
     for (const tag of tags) {
 
-      // VPC usa values[]
       if (
         Array.isArray(tag.values)
       ) {
@@ -50,10 +63,7 @@ export async function getHuaweiTags({
         formatted[tag.key] =
           tag.values.join(",");
 
-      }
-
-      // ECS/RDS/Subnet usan value
-      else {
+      } else {
 
         formatted[tag.key] =
           tag.value;
