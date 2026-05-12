@@ -20,6 +20,7 @@ type InventoryItem = {
   host: string;
   status: string;
   operatingSystem?: string;
+  tags?: Record<string, string>;
 };
 
 type UserRole =
@@ -127,6 +128,61 @@ function getStatusStyle(status: string): string {
 
 }
 
+function formatTags(
+
+  tags?: Record<string, string>
+
+) {
+
+  if (
+
+    !tags ||
+
+    Object.keys(tags).length === 0
+
+  ) {
+
+    return ["Sin tags"];
+
+  }
+
+  const orderedKeys = [
+
+    "cliente",
+    "proyecto"
+
+  ];
+
+  const formatted: string[] = [];
+
+  for (const key of orderedKeys) {
+
+    const value = tags[key];
+
+    if (
+
+      value &&
+
+      value.trim() !== ""
+
+    ) {
+
+      formatted.push(
+        `${key}: ${value}`
+      );
+
+    }
+
+  }
+
+  return formatted.length > 0
+
+    ? formatted
+
+    : ["Sin tags"];
+
+}
+
 function exportCSV(rows: InventoryItem[], filename: string): void {
   const headers = ["Provider", "Account", "Service", "Name", "ID", "Host", "OS", "Status"];
   const csv = [
@@ -198,13 +254,14 @@ export default function Home() {
   const [serviceFilter, setServiceFilter] = useState<string[]>([]);
   const [accountFilter, setAccountFilter] = useState<string[]>([]);
   const [providerFilter, setProviderFilter] = useState<string[]>([]);
+  const [clienteFilter, setClienteFilter] = useState<string[]>([]);
+  const [proyectoFilter, setProyectoFilter] = useState<string[]>([]);
   const [osFilter,      setOsFilter]      = useState<string[]>([]);
   const [statusFilter,  setStatusFilter]  = useState<string[]>([]);
   const [sortField, setSortField] = useState<keyof InventoryItem>("name");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   // ── Commands ──────────────────────────────
-  const [selected,       setSelected]       = useState<string[]>([]);
   const [command,        setCommand]        = useState("");
   const [logs,           setLogs]           = useState<string[]>([]);
   const [runningCommand, setRunningCommand] = useState(false);
@@ -452,6 +509,42 @@ export default function Home() {
     [data]
   );
 
+  const clientes = useMemo((): string[] => {
+
+    return [
+
+      ...new Set(
+
+        data
+          .map((item) => item.tags?.cliente)
+          .filter(
+            (value): value is string => Boolean(value)
+          )
+
+      )
+
+    ].sort();
+
+  }, [data]);
+
+  const proyectos = useMemo((): string[] => {
+
+    return [
+
+      ...new Set(
+
+        data
+          .map((item) => item.tags?.proyecto)
+          .filter(
+            (value): value is string => Boolean(value)
+          )
+
+      )
+
+    ].sort();
+
+  }, [data]);
+
   useEffect(() => {
 
     setServiceFilter((prev) =>
@@ -489,7 +582,13 @@ export default function Home() {
       const normalizedStatus =
         item.status.toLowerCase();
 
+      const tagText =
+        Object.entries(item.tags || {})
+          .map(([k, v]) => `${k} ${v}`)
+          .join(" ");
+
       const searchMatch =
+
         (item.name || "")
           .toLowerCase()
           .includes(q)
@@ -498,8 +597,30 @@ export default function Home() {
 
         (item.id || "")
           .toLowerCase()
+          .includes(q)
+
+        ||
+
+        tagText
+          .toLowerCase()
           .includes(q);
 
+      const clienteMatch =
+
+        clienteFilter.length === 0 ||
+
+        clienteFilter.includes(
+          item.tags?.cliente
+        );
+
+      const proyectoMatch =
+
+        proyectoFilter.length === 0 ||
+
+        proyectoFilter.includes(
+          item.tags?.proyecto
+        );
+        
       const providerMatch =
         providerFilter.length === 0 ||
         providerFilter.includes(
@@ -531,12 +652,16 @@ export default function Home() {
         );
 
       return (
+
         searchMatch &&
         providerMatch &&
         serviceMatch &&
         accountMatch &&
         osMatch &&
-        statusMatch
+        statusMatch &&
+        clienteMatch &&
+        proyectoMatch
+
       );
 
     });
@@ -587,14 +712,6 @@ export default function Home() {
   ).length;
   const stopped = total - running;
 
-  const allEC2Ids =
-    filteredData.filter(
-      (i) =>
-        i.service === "EC2" ||
-        i.service === "ECS"
-    ).map((i) => i.uniqueKey || i.id);
-  const isAllSelected =
-    allEC2Ids.length > 0 && allEC2Ids.every((id) => selected.includes(id));
 
   // ─────────────────────────────────────────
   // Handlers
@@ -607,15 +724,10 @@ export default function Home() {
     setAccountFilter([]);
     setOsFilter([]);
     setStatusFilter([]);
+    setClienteFilter([]);
+    setProyectoFilter([]);
   };
 
-  const toggleSelect = (id: string) =>
-    setSelected((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
-
-  const toggleSelectAll = () =>
-    setSelected(isAllSelected ? [] : allEC2Ids);
 
   const toggleFilter = <T,>(
     setter: React.Dispatch<React.SetStateAction<T[]>>,
@@ -647,52 +759,11 @@ export default function Home() {
   };
 
   const runCommand = async (): Promise<void> => {
-    if (!command.trim()) return;
-    if (!canExecute) {
-      alert("Tu rol no tiene permisos para ejecutar comandos.");
-      return;
-    }
 
-    const instances = data
-      .filter((i) => selected.includes(i.uniqueKey || i.id) && i.service === "EC2" && i.status === "running")
-      .map((i) => ({ instanceId: i.id, accountId: i.accountId }));
+    alert(
+      "Próximamente podrás seleccionar servidores desde una ventana."
+    );
 
-    if (!instances.length) {
-      alert("Selecciona al menos una instancia EC2 en estado running.");
-      return;
-    }
-
-    setRunningCommand(true);
-    setLogs(["🚀 Ejecutando comando...\n"]);
-
-    try {
-      const res = await fetch("/api/ec2/run-command", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ instances, command }),
-      });
-
-      if (res.status === 403) {
-        setLogs(["⚠️ Comando bloqueado por política de seguridad."]);
-        return;
-      }
-      if (!res.ok) {
-        setLogs([`❌ Error del servidor (${res.status})`]);
-        return;
-      }
-
-      const result = await res.json();
-      setLogs(
-        result.map((r: any) => {
-          const name = data.find((i) => i.id === r.instanceId)?.name ?? r.instanceId;
-          return `[${r.accountId}] ${name}\n${r.output ?? r.error ?? "Sin salida"}\n${"-".repeat(40)}\n`;
-        })
-      );
-    } catch {
-      setLogs(["❌ No se pudo conectar con el servidor."]);
-    } finally {
-      setRunningCommand(false);
-    }
   };
 
   // ─────────────────────────────────────────
@@ -915,7 +986,7 @@ export default function Home() {
       </header>
 
       {/* ── Body ────────────────────────────── */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="max-w-[95%] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
 
         {/* Métricas */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
@@ -985,7 +1056,7 @@ export default function Home() {
                 </svg>
                 <input
                   type="text"
-                  placeholder="Buscar por nombre o ID..."
+                  placeholder="Buscar por nombre, ID o tags..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 bg-[var(--bg-dark)] rounded-lg border border-[var(--border)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[var(--primary)]"
@@ -1117,6 +1188,83 @@ export default function Home() {
                   ))}
                 </div>
               </div>
+
+              {/* Cliente */}
+                {clientes.length > 0 && (
+
+                  <div>
+
+                    <p className="text-xs text-[var(--text-secondary)] mb-2">
+                      Cliente
+                    </p>
+
+                    <div className="flex flex-wrap gap-2">
+
+                      {clientes.map((cliente) => (
+
+                        <button
+                          key={cliente}
+                          onClick={() =>
+                            toggleFilter(
+                              setClienteFilter,
+                              cliente
+                            )
+                          }
+                          className={`px-3 py-1 rounded-full text-xs transition-all ${
+                            clienteFilter.includes(cliente)
+                              ? "bg-[var(--primary)] text-white"
+                              : "bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:bg-[var(--border)]"
+                          }`}
+                        >
+                          {cliente}
+                        </button>
+
+                      ))}
+
+                    </div>
+
+                  </div>
+
+                )}
+
+              {/* Proyecto */}
+                {proyectos.length > 0 && (
+
+                  <div>
+
+                    <p className="text-xs text-[var(--text-secondary)] mb-2">
+                      Proyecto
+                    </p>
+
+                    <div className="flex flex-wrap gap-2">
+
+                      {proyectos.map((proyecto) => (
+
+                        <button
+                          key={proyecto}
+                          onClick={() =>
+                            toggleFilter(
+                              setProyectoFilter,
+                              proyecto
+                            )
+                          }
+                          className={`px-3 py-1 rounded-full text-xs transition-all ${
+                            proyectoFilter.includes(proyecto)
+                              ? "bg-[var(--primary)] text-white"
+                              : "bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:bg-[var(--border)]"
+                          }`}
+                        >
+                          {proyecto}
+                        </button>
+
+                      ))}
+
+                    </div>
+
+                  </div>
+
+              )}
+
             </div>
           )}
         </div>
@@ -1186,26 +1334,7 @@ export default function Home() {
                     <h3 className="font-semibold text-[var(--text-primary)]">{item.name}</h3>
                     <p className="text-xs text-[var(--text-secondary)] font-mono mt-1">{item.id}</p>
                   </div>
-                  {canExecute &&
-                    (
-                      item.service === "EC2" ||
-                      item.service === "ECS"
-                    ) && (
-                    <input
-                      type="checkbox"
-                      checked={
-                        selected.includes(
-                          item.uniqueKey || item.id
-                        )
-                      }
-                      onChange={() =>
-                        toggleSelect(
-                          item.uniqueKey || item.id
-                        )
-                      }
-                      className="w-5 h-5 rounded border-[var(--border)] bg-[var(--bg-dark)] accent-[var(--primary)]"
-                    />
-                  )}
+
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-sm mb-3">
@@ -1238,7 +1367,41 @@ export default function Home() {
                     </span>
                   </div>
                 </div>
+                {formatTags(item.tags).length > 0 && (
 
+                  <div className="pt-2 border-t border-[var(--border)]">
+
+                    <p className="text-xs text-[var(--text-secondary)] mb-2">
+                      Tags
+                    </p>
+
+                    <div className="flex flex-wrap gap-1">
+
+                      {formatTags(item.tags).map((tag, index) => (
+
+                        <span
+                          key={index}
+                          className="
+                            px-2
+                            py-1
+                            rounded-md
+                            text-xs
+                            bg-[var(--primary)]/10
+                            text-[var(--primary)]
+                            border
+                            border-[var(--primary)]/20
+                          "
+                        >
+                          {tag}
+                        </span>
+
+                      ))}
+
+                    </div>
+
+                  </div>
+
+                )}
                 {item.operatingSystem && item.operatingSystem !== "N/A" && (
                   <div className="pt-2 border-t border-[var(--border)]">
                     <p className="text-xs text-[var(--text-secondary)]">SO</p>
@@ -1255,16 +1418,6 @@ export default function Home() {
               <table className="w-full">
                 <thead className="bg-[var(--bg-hover)]/50">
                   <tr>
-                    {canExecute && (
-                      <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-secondary)] w-10">
-                        <input
-                          type="checkbox"
-                          checked={isAllSelected}
-                          onChange={toggleSelectAll}
-                          className="rounded border-[var(--border)] bg-[var(--bg-dark)] accent-[var(--primary)]"
-                        />
-                      </th>
-                    )}
                     {[
                       {
                         label: "Ubicación",
@@ -1293,6 +1446,10 @@ export default function Home() {
                       {
                         label: "Estado",
                         field: "status"
+                      },
+                      {
+                        label: "Tags",
+                        field: "tags"
                       }
                     ].map((col) => (
                       <th
@@ -1302,7 +1459,23 @@ export default function Home() {
                             col.field as keyof InventoryItem
                           )
                         }
-                        className="px-4 py-3 text-left text-xs font-medium text-[var(--text-secondary)] cursor-pointer hover:text-[var(--primary)] transition-all"
+                        className={`
+                          px-4
+                          py-3
+                          text-left
+                          text-xs
+                          font-medium
+                          text-[var(--text-secondary)]
+                          cursor-pointer
+                          hover:text-[var(--primary)]
+                          transition-all
+
+                          ${
+                            col.field === "tags"
+                              ? "min-w-[180px] w-[180px]"
+                              : ""
+                          }
+                        `}
                       >
                         <div className="flex items-center gap-2">
 
@@ -1331,26 +1504,7 @@ export default function Home() {
                       key={item.uniqueKey || `${item.accountId}-${item.service}-${item.id}`}
                       className="hover:bg-[var(--bg-hover)]/50 transition-colors"
                     >
-                      {canExecute && (
-                        <td className="px-4 py-3">
-                          {item.service === "EC2" && (
-                            <input
-                              type="checkbox"
-                              checked={
-                                selected.includes(
-                                  item.uniqueKey || item.id
-                                )
-                              }
-                              onChange={() =>
-                                toggleSelect(
-                                  item.uniqueKey || item.id
-                                )
-                              }
-                              className="rounded border-[var(--border)] bg-[var(--bg-dark)] accent-[var(--primary)]"
-                            />
-                          )}
-                        </td>
-                      )}
+
                       <td className="px-4 py-3 text-sm font-medium text-[var(--primary)]">
                         {item.provider ?? "AWS"}
                       </td>
@@ -1367,9 +1521,119 @@ export default function Home() {
                       <td className="px-4 py-3 text-sm text-[var(--text-secondary)] font-mono">{item.id}</td>
                       <td className="px-4 py-3 text-sm text-[var(--text-secondary)] font-mono">{item.host}</td>
                       <td className="px-4 py-3">
-                        <span className={`inline-block px-2 py-1 rounded text-xs ${getStatusStyle(item.status)}`}>
+                        <span
+                          className={`inline-block px-2 py-1 rounded text-xs ${getStatusStyle(item.status)}`}
+                        >
                           {item.status}
                         </span>
+                      </td>
+
+                      <td
+                        className="
+                          px-4
+                          py-3
+                          min-w-[180px]
+                          w-[180px]
+                        "
+                      >
+
+                        <div className="relative group">
+
+                          <div
+                            className="
+                              inline-flex
+                              items-center
+                              gap-1
+                              px-2
+                              py-1
+                              rounded-lg
+                              bg-[var(--primary)]/10
+                              text-[var(--primary)]
+                              text-xs
+                              cursor-pointer
+                            "
+                          >
+
+                            🏷️
+
+                            {
+
+                              [
+                                item.tags?.cliente,
+                                item.tags?.proyecto
+                              ].filter(Boolean).length
+
+                            }
+
+                          </div>
+
+                          {/* Tooltip */}
+                          <div
+                            className="
+                              absolute
+                              z-50
+                              hidden
+                              group-hover:block
+                              top-8
+                              right-0
+                              min-w-[220px]
+                              bg-[var(--bg-card)]
+                              border
+                              border-[var(--border)]
+                              rounded-xl
+                              shadow-2xl
+                              p-3
+                            "
+                          >
+
+                            {
+
+                              !item.tags ||
+
+                              Object.keys(item.tags).length === 0
+
+                                ? (
+
+                                  <p className="text-xs text-[var(--text-secondary)]">
+                                    Sin tags
+                                  </p>
+
+                                ) : (
+
+                                  <div className="space-y-2">
+
+                                    {
+
+                                      formatTags(item.tags).map((tag) => (
+
+                                        <div
+                                          key={tag}
+                                          className="
+                                            text-xs
+                                            bg-[var(--bg-hover)]
+                                            px-2
+                                            py-1
+                                            rounded-md
+                                            text-[var(--text-primary)]
+                                          "
+                                        >
+                                          {tag}
+                                        </div>
+
+                                      ))
+
+                                    }
+
+                                  </div>
+
+                                )
+
+                            }
+
+                          </div>
+
+                        </div>
+
                       </td>
                     </tr>
                   ))}

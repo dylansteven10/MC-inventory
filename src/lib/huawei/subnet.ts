@@ -6,6 +6,10 @@ import {
   HUAWEI_ACCOUNT_MAP
 } from "@/lib/huawei/accounts";
 
+import {
+  getHuaweiTags
+} from "./tags";
+
 export async function getHuaweiSubnetInventory() {
 
   try {
@@ -40,48 +44,68 @@ export async function getHuaweiSubnetInventory() {
       subnets.length
     );
 
-    return subnets.map((subnet: any) => {
+    return await Promise.all(
 
-      const tenantId =
-        subnet.tenant_id || projectId;
+      subnets.map(async (subnet: any) => {
 
-      return {
+        const tenantId =
+          subnet.tenant_id || projectId;
 
-        uniqueKey:
-          `HUAWEI-${tenantId}-SUBNET-${subnet.id}`,
+        const subnetId =
+          subnet.id || "N/A";
 
-        provider:
-          "HUAWEI CLOUD",
+        const tags =
+          await getHuaweiTags({
 
-        accountName:
-          HUAWEI_ACCOUNT_MAP[
-            tenantId
-          ] || "unknown",
+            host:
+              "vpc.la-north-2.myhuaweicloud.com",
 
-        accountId:
-          tenantId,
+            uri:
+              `/v2.0/${tenantId}/subnets/${subnetId}/tags`
 
-        service:
-          "Subnet",
+          });
 
-        name:
-          subnet.name || "N/A",
+        return {
 
-        id:
-          subnet.id || "N/A",
+          uniqueKey:
+            `HUAWEI-${tenantId}-SUBNET-${subnetId}`,
 
-        host:
-          subnet.cidr || "N/A",
+          provider:
+            "HUAWEI CLOUD",
 
-        status:
-          subnet.status || "UNKNOWN",
+          accountName:
+            HUAWEI_ACCOUNT_MAP[
+              tenantId
+            ] || "unknown",
 
-        operatingSystem:
-          "N/A"
+          accountId:
+            tenantId,
 
-      };
+          service:
+            "Subnet",
 
-    });
+          name:
+            subnet.name || "N/A",
+
+          id:
+            subnetId,
+
+          host:
+            subnet.cidr || "N/A",
+
+          status:
+            subnet.status || "UNKNOWN",
+
+          operatingSystem:
+            "N/A",
+
+          tags
+
+        };
+
+      })
+
+    );
 
   } catch (error: any) {
 

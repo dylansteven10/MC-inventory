@@ -81,7 +81,9 @@ export async function getHuaweiOBSInventory() {
           "available",
 
         operatingSystem:
-          "N/A"
+          "N/A",
+
+        tags: {}
 
       };
 

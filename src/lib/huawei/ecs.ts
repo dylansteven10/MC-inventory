@@ -6,6 +6,8 @@ import {
   HUAWEI_ACCOUNT_MAP
 } from "@/lib/huawei/accounts";
 
+import { getHuaweiTags } from "./tags";
+
 export async function getHuaweiECSInventory() {
 
   try {
@@ -40,7 +42,9 @@ export async function getHuaweiECSInventory() {
       servers.length
     );
 
-    return servers.map((server: any) => {
+    return await Promise.all(
+
+      servers.map(async (server: any) => {
 
       let hostIp = "N/A";
 
@@ -68,6 +72,17 @@ export async function getHuaweiECSInventory() {
 
       const tenantId =
         server.tenant_id || projectId;
+
+      const tags =
+        await getHuaweiTags({
+
+          host:
+            "ecs.la-north-2.myhuaweicloud.com",
+
+          uri:
+            `/v1/${tenantId}/cloudservers/${serverId}/tags`
+
+        });
 
       return {
 
@@ -101,11 +116,13 @@ export async function getHuaweiECSInventory() {
           server.status || "UNKNOWN",
 
         operatingSystem:
-          "Linux"
+          "Linux",
+
+        tags
 
       };
 
-    });
+    }));
 
   } catch (error: any) {
 

@@ -6,6 +6,10 @@ import {
   HUAWEI_ACCOUNT_MAP
 } from "@/lib/huawei/accounts";
 
+import {
+  getHuaweiTags
+} from "./tags";
+
 export async function getHuaweiRDSInventory() {
 
   try {
@@ -40,48 +44,65 @@ export async function getHuaweiRDSInventory() {
       instances.length
     );
 
-    return instances.map((db: any) => {
+    return await Promise.all(
 
-      const dbId =
-        db.id || "N/A";
+      instances.map(async (db: any) => {
 
-      return {
+        const dbId =
+          db.id || "N/A";
 
-        uniqueKey:
-          `HUAWEI-${projectId}-RDS-${dbId}`,
+        const tags =
+          await getHuaweiTags({
 
-        provider:
-          "HUAWEI CLOUD",
+            host:
+              "rds.la-north-2.myhuaweicloud.com",
 
-        accountName:
-          HUAWEI_ACCOUNT_MAP[
-            projectId
-          ] || "unknown",
+            uri:
+              `/v3/${projectId}/instances/${dbId}/tags`
 
-        accountId:
-          projectId,
+          });
 
-        service:
-          "RDS",
+        return {
 
-        name:
-          db.name || "N/A",
+          uniqueKey:
+            `HUAWEI-${projectId}-RDS-${dbId}`,
 
-        id:
-          dbId,
+          provider:
+            "HUAWEI CLOUD",
 
-        host:
-          db.private_ips?.[0] || "N/A",
+          accountName:
+            HUAWEI_ACCOUNT_MAP[
+              projectId
+            ] || "unknown",
 
-        status:
-          db.status || "UNKNOWN",
+          accountId:
+            projectId,
 
-        operatingSystem:
-          `${db.datastore?.type || "RDS"} ${db.datastore?.version || ""}`
+          service:
+            "RDS",
 
-      };
+          name:
+            db.name || "N/A",
 
-    });
+          id:
+            dbId,
+
+          host:
+            db.private_ips?.[0] || "N/A",
+
+          status:
+            db.status || "UNKNOWN",
+
+          operatingSystem:
+            `${db.datastore?.type || "RDS"} ${db.datastore?.version || ""}`,
+
+          tags
+
+        };
+
+      })
+
+    );
 
   } catch (error: any) {
 
