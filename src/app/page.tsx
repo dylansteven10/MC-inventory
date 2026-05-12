@@ -605,20 +605,26 @@ export default function Home() {
           .toLowerCase()
           .includes(q);
 
+      const cliente =
+        item.tags?.cliente ?? "";
+
       const clienteMatch =
 
         clienteFilter.length === 0 ||
 
         clienteFilter.includes(
-          item.tags?.cliente
+          cliente
         );
+
+      const proyecto =
+        item.tags?.proyecto ?? "";
 
       const proyectoMatch =
 
         proyectoFilter.length === 0 ||
 
         proyectoFilter.includes(
-          item.tags?.proyecto
+          proyecto
         );
         
       const providerMatch =
@@ -700,6 +706,8 @@ export default function Home() {
     providerFilter,
     serviceFilter,
     accountFilter,
+    clienteFilter,
+    proyectoFilter,
     osFilter,
     statusFilter,
     sortField,
