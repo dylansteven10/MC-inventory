@@ -27,106 +27,149 @@ export async function getAWSRDSInventory(
 
 ) {
 
-  const credentials = {
+  try {
 
-    accessKeyId:
-      account.accessKeyId,
+    const credentials = {
 
-    secretAccessKey:
-      account.secretAccessKey
+      accessKeyId:
+        account.accessKeyId,
 
-  };
+      secretAccessKey:
+        account.secretAccessKey
 
-  const client =
-    new RDSClient({
+    };
 
-      region,
-      credentials
+    const client =
+      new RDSClient({
 
-    });
+        region,
+        credentials
 
-  const data =
-    await client.send(
+      });
 
-      new DescribeDBInstancesCommand({})
+    const data =
+      await client.send(
 
-    );
+        new DescribeDBInstancesCommand({})
 
-  return await Promise.all(
+      );
 
-    (data.DBInstances || []).map(
+    return await Promise.all(
 
-      async (db) => {
+      (data.DBInstances || []).map(
 
-        const id =
-          db.DBInstanceIdentifier || "";
+        async (db) => {
 
-        let tags = {};
+          const id =
+            db.DBInstanceIdentifier || "";
 
-        try {
+          let tags: Record<string, string> = {};
 
-          const tagData =
-            await client.send(
+          try {
 
-              new ListTagsForResourceCommand({
+            const arn =
+              db.DBInstanceArn;
 
-                ResourceName:
-                  db.DBInstanceArn!
+            if (arn) {
 
-              })
+              console.log(
+                "RDS ARN:",
+                arn
+              );
+
+              const tagData =
+                await client.send(
+
+                  new ListTagsForResourceCommand({
+
+                    ResourceName:
+                      arn
+
+                  })
+
+                );
+
+              console.log(
+                "RDS TAGS:",
+                id,
+                tagData.TagList
+              );
+
+              tags =
+                formatAwsTags(
+                  tagData.TagList || []
+                );
+
+            }
+
+          } catch (error: any) {
+
+            console.error(
+
+              `RDS TAG ERROR (${id}):`,
+
+              error?.message ||
+              error
 
             );
 
-          tags =
-            formatAwsTags(
-              tagData.TagList
-            );
+            tags = {};
 
-        } catch {
+          }
 
-          tags = {};
+          return {
+
+            uniqueKey:
+              `AWS-${account.id}-RDS-${id}`,
+
+            provider:
+              "AWS",
+
+            accountName:
+              account.name,
+
+            accountId:
+              account.id,
+
+            service:
+              "RDS",
+
+            name:
+              id,
+
+            operatingSystem:
+              db.Engine || "N/A",
+
+            id,
+
+            host:
+              db.Endpoint?.Address || "N/A",
+
+            status:
+              db.DBInstanceStatus || "UNKNOWN",
+
+            tags
+
+          };
 
         }
 
-        return {
+      )
 
-          uniqueKey:
-            `AWS-${account.id}-RDS-${id}`,
+    );
 
-          provider:
-            "AWS",
+  } catch (error: any) {
 
-          accountName:
-            account.name,
+    console.error(
 
-          accountId:
-            account.id,
+      "AWS RDS ERROR:",
 
-          service:
-            "RDS",
+      error?.message || error
 
-          name:
-            id,
+    );
 
-          operatingSystem:
-            db.Engine || "N/A",
+    return [];
 
-          id,
-
-          host:
-            db.Endpoint?.Address || "N/A",
-
-          status:
-            db.DBInstanceStatus || "UNKNOWN",
-
-          tags
-
-        };
-
-      }
-
-    )
-
-  );
+  }
 
 }
