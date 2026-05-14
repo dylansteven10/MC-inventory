@@ -133,6 +133,18 @@ export async function getHuaweiECSInventory() {
                 operatingSystem:
                   "Linux",
 
+                securityGroups:
+
+                  (server.security_groups || []).map((sg: any) => ({
+
+                    id:
+                      sg.id || "N/A",
+
+                    name:
+                      sg.name || "N/A"
+
+                  })),
+
                 tags
 
               };

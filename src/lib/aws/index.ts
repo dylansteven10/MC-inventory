@@ -34,6 +34,12 @@ import {
 
 } from "./subnet";
 
+import {
+
+  getAWSELBInventory
+
+} from "./elb";
+
 export async function getAWSInventory() {
 
   const accounts =
@@ -58,13 +64,17 @@ export async function getAWSInventory() {
     const subnet =
       await getAWSSubnetInventory(account);
 
+    const elb =
+      await getAWSELBInventory(account);
+
     inventory.push(
 
       ...ec2,
       ...rds,
       ...s3,
       ...vpc,
-      ...subnet
+      ...subnet,
+      ...elb
 
     );
 

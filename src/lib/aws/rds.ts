@@ -72,11 +72,6 @@ export async function getAWSRDSInventory(
 
             if (arn) {
 
-              console.log(
-                "RDS ARN:",
-                arn
-              );
-
               const tagData =
                 await client.send(
 
@@ -89,12 +84,6 @@ export async function getAWSRDSInventory(
 
                 );
 
-              console.log(
-                "RDS TAGS:",
-                id,
-                tagData.TagList
-              );
-
               tags =
                 formatAwsTags(
                   tagData.TagList || []
@@ -102,16 +91,7 @@ export async function getAWSRDSInventory(
 
             }
 
-          } catch (error: any) {
-
-            console.error(
-
-              `RDS TAG ERROR (${id}):`,
-
-              error?.message ||
-              error
-
-            );
+          } catch {
 
             tags = {};
 
@@ -147,6 +127,20 @@ export async function getAWSRDSInventory(
 
             status:
               db.DBInstanceStatus || "UNKNOWN",
+
+            securityGroups:
+
+              (
+                db.VpcSecurityGroups || []
+              ).map((sg) => ({
+
+                id:
+                  sg.VpcSecurityGroupId || "N/A",
+
+                name:
+                  sg.Status || "attached"
+
+              })),
 
             tags
 

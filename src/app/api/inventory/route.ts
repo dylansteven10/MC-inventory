@@ -22,6 +22,10 @@ import {
   getHuaweiOBSInventory
 } from "@/lib/huawei/obs";
 
+import {
+  enrichRelationships
+} from "@/lib/inventory/enrichRelationships";
+
 export async function GET() {
 
   try {
@@ -44,7 +48,7 @@ export async function GET() {
     const huaweiOBS =
       await getHuaweiOBSInventory();
 
-    return NextResponse.json([
+    const allInventory = [
 
       ...awsInventory,
 
@@ -54,7 +58,16 @@ export async function GET() {
       ...huaweiSubnet,
       ...huaweiOBS
 
-    ]);
+    ];
+
+    const enriched =
+      enrichRelationships(
+        allInventory
+      );
+
+    return NextResponse.json(
+      enriched
+    );
 
   } catch (error) {
 

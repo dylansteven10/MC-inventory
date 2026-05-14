@@ -1,9 +1,18 @@
 import {
 
   EC2Client,
-  DescribeInstancesCommand
+
+  DescribeInstancesCommand,
+  DescribeSecurityGroupsCommand
 
 } from "@aws-sdk/client-ec2";
+
+import {
+
+  SSMClient,
+  DescribeInstanceInformationCommand
+
+} from "@aws-sdk/client-ssm";
 
 import {
 
@@ -36,7 +45,7 @@ export async function getAWSEC2Inventory(
 
   };
 
-  const client =
+  const ec2Client =
     new EC2Client({
 
       region,
@@ -44,8 +53,126 @@ export async function getAWSEC2Inventory(
 
     });
 
+  const ssmClient =
+    new SSMClient({
+
+      region,
+      credentials
+
+    });
+
+  /* ───────────────────────────── */
+  /* SECURITY GROUPS */
+  /* ───────────────────────────── */
+
+  const sgData =
+    await ec2Client.send(
+
+      new DescribeSecurityGroupsCommand({})
+
+    );
+
+  const sgMap =
+    new Map();
+
+  for (const sg of (sgData.SecurityGroups || [])) {
+
+    sgMap.set(
+
+      sg.GroupId,
+
+      {
+
+        id:
+          sg.GroupId || "N/A",
+
+        name:
+          sg.GroupName || "N/A",
+
+        inboundRules:
+
+          (sg.IpPermissions || []).flatMap((rule) =>
+
+            (rule.IpRanges || []).map((range) => ({
+
+              protocol:
+                rule.IpProtocol,
+
+              fromPort:
+                rule.FromPort,
+
+              toPort:
+                rule.ToPort,
+
+              cidr:
+                range.CidrIp,
+
+              direction:
+                "inbound"
+
+            }))
+
+          ),
+
+        outboundRules:
+
+          (sg.IpPermissionsEgress || []).flatMap((rule) =>
+
+            (rule.IpRanges || []).map((range) => ({
+
+              protocol:
+                rule.IpProtocol,
+
+              fromPort:
+                rule.FromPort,
+
+              toPort:
+                rule.ToPort,
+
+              cidr:
+                range.CidrIp,
+
+              direction:
+                "outbound"
+
+            }))
+
+          )
+
+      }
+
+    );
+
+  }
+
+  /* ───────────────────────────── */
+  /* SSM MANAGED INSTANCES */
+  /* ───────────────────────────── */
+
+  const ssmData =
+    await ssmClient.send(
+
+      new DescribeInstanceInformationCommand({})
+
+    );
+
+  const managedInstances =
+    new Set(
+
+      (ssmData.InstanceInformationList || []).map(
+
+        (i) => i.InstanceId
+
+      )
+
+    );
+
+  /* ───────────────────────────── */
+  /* EC2 */
+  /* ───────────────────────────── */
+
   const data =
-    await client.send(
+    await ec2Client.send(
 
       new DescribeInstancesCommand({})
 
@@ -84,16 +211,59 @@ export async function getAWSEC2Inventory(
 
           )?.Value || "N/A",
 
-        operatingSystem:
-          instance.PlatformDetails || "Linux/Unix",
-
         id,
 
         host:
           instance.PrivateIpAddress || "N/A",
 
+        privateIp:
+          instance.PrivateIpAddress || "N/A",
+
+        publicIp:
+          instance.PublicIpAddress || "N/A",
+
         status:
           instance.State?.Name || "UNKNOWN",
+
+        operatingSystem:
+          instance.PlatformDetails || "Linux/Unix",
+
+        platform:
+          instance.PlatformDetails || "Linux/Unix",
+
+        architecture:
+          instance.Architecture || "N/A",
+
+        imageId:
+          instance.ImageId || "N/A",
+
+        instanceType:
+          instance.InstanceType || "N/A",
+
+        vpcId:
+          instance.VpcId || "N/A",
+
+        subnetId:
+          instance.SubnetId || "N/A",
+
+        availabilityZone:
+          instance.Placement?.AvailabilityZone || "N/A",
+
+        launchTime:
+          instance.LaunchTime?.toISOString() || "N/A",
+
+        ssmManaged:
+          managedInstances.has(id),
+
+        securityGroups:
+
+          (instance.SecurityGroups || []).map((sg) =>
+
+            sgMap.get(
+              sg.GroupId
+            )
+
+          ).filter(Boolean),
 
         tags:
           formatAwsTags(
