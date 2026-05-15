@@ -60,7 +60,7 @@ export default function MetricsCards({
       label: "Total Recursos",
       value: total,
       subtitle: "Filtrados",
-      icon: <Boxes size={22} />,
+      icon: <Boxes size={18} />,
       color: "var(--primary)"
     },
 
@@ -68,7 +68,7 @@ export default function MetricsCards({
       label: "Providers",
       value: providers,
       subtitle: "Clouds",
-      icon: <Cloud size={22} />,
+      icon: <Cloud size={18} />,
       color: "var(--info)"
     },
 
@@ -76,7 +76,7 @@ export default function MetricsCards({
       label: "Servicios",
       value: services,
       subtitle: "Únicos",
-      icon: <Server size={22} />,
+      icon: <Server size={18} />,
       color: "var(--warning)"
     },
 
@@ -84,7 +84,7 @@ export default function MetricsCards({
       label: "Running",
       value: running,
       subtitle: "Operativos",
-      icon: <Shield size={22} />,
+      icon: <Shield size={18} />,
       color: "var(--success)"
     },
 
@@ -92,7 +92,7 @@ export default function MetricsCards({
       label: "Expuestos",
       value: exposed,
       subtitle: "Públicos",
-      icon: <Globe size={22} />,
+      icon: <Globe size={18} />,
       color: "var(--error)"
     },
 
@@ -100,7 +100,7 @@ export default function MetricsCards({
       label: "Cuentas",
       value: accounts,
       subtitle: "Detectadas",
-      icon: <AlertTriangle size={22} />,
+      icon: <AlertTriangle size={18} />,
       color: "var(--secondary)"
     }
 
@@ -113,8 +113,8 @@ export default function MetricsCards({
         grid
         grid-cols-2
         xl:grid-cols-6
-        gap-4
-        mb-8
+        gap-3
+        mb-5
       "
     >
 
@@ -129,8 +129,10 @@ export default function MetricsCards({
             backdrop-blur-xl
             border
             border-[var(--border)]
-            rounded-3xl
-            p-5
+            rounded-2xl
+            p-4
+            interactive-button
+            interactive-glow
           "
         >
 
@@ -148,17 +150,17 @@ export default function MetricsCards({
 
           <div className="relative z-10">
 
-            <div className="flex items-start justify-between mb-5">
+            <div className="flex items-start justify-between mb-3">
 
               <div>
 
                 <p
                   className="
-                    text-xs
+                    text-[10px]
                     uppercase
                     tracking-wider
                     text-[var(--text-secondary)]
-                    mb-2
+                    mb-1
                   "
                 >
                   {metric.label}
@@ -166,7 +168,7 @@ export default function MetricsCards({
 
                 <p
                   className="
-                    text-4xl
+                    text-3xl
                     font-bold
                   "
                   style={{
@@ -180,9 +182,9 @@ export default function MetricsCards({
 
               <div
                 className="
-                  w-11
-                  h-11
-                  rounded-2xl
+                  w-9
+                  h-9
+                  rounded-xl
                   flex
                   items-center
                   justify-center
@@ -199,7 +201,7 @@ export default function MetricsCards({
 
             </div>
 
-            <p className="text-sm text-[var(--text-secondary)]">
+            <p className="text-xs text-[var(--text-secondary)]">
               {metric.subtitle}
             </p>
 

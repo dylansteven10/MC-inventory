@@ -23,6 +23,7 @@ import InventoryCards from "@/components/inventory/InventoryCards";
 import MetricsCards from "@/components/inventory/MetricsCards";
 import ResourceModal from "@/components/inventory/ResourceModal";
 import UserMenu from "@/components/layout/UserMenu";
+import ScrollToTop from "@/components/ui/ScrollToTop";
 
 import {
   exportCSV
@@ -51,7 +52,7 @@ export default function Home() {
     useState<InventoryItem | null>(null);
 
   const [filtersOpen, setFiltersOpen] =
-    useState(true);
+    useState(false);
 
   const [search, setSearch] =
     useState("");
@@ -632,7 +633,7 @@ export default function Home() {
             className="
               w-28
               h-28
-              rounded-3xl
+              rounded-xl
               mx-auto
               mb-8
               animate-glowPulse
@@ -640,7 +641,7 @@ export default function Home() {
               items-center
               justify-center
               text-white
-              text-4xl
+              text-3xl
               font-bold
             "
             style={{
@@ -651,7 +652,7 @@ export default function Home() {
             MC
           </div>
 
-          <h1 className="text-5xl font-bold mb-4">
+          <h1 className="text-4xl font-bold mb-4">
             MC Inventory
           </h1>
 
@@ -687,9 +688,9 @@ export default function Home() {
 
             <div
               className="
-                w-14
-                h-14
-                rounded-2xl
+                w-12
+                h-12
+                rounded-xl
                 flex
                 items-center
                 justify-center
@@ -707,12 +708,12 @@ export default function Home() {
 
             <div>
 
-              <h1 className="text-4xl font-bold">
+              <h1 className="text-3xl font-bold">
                 MC Inventory
               </h1>
 
               <p className="text-[var(--text-secondary)]">
-                Enterprise Cloud Inventory
+                Inventario Cloud Centralizado
               </p>
 
             </div>
@@ -809,8 +810,8 @@ export default function Home() {
           bg-[var(--bg-card)]/60
           border
           border-[var(--border)]
-          rounded-3xl
-          p-6
+          rounded-xl
+          p-4
           backdrop-blur-xl
         "
       >
@@ -829,8 +830,10 @@ export default function Home() {
             className="
               flex-1
               px-5
-              py-4
-              rounded-2xl
+              py-3
+              interactive-button
+              interactive-glow
+              rounded-xl
               bg-[var(--bg-dark)]
               border
               border-[var(--border)]
@@ -848,8 +851,10 @@ export default function Home() {
               }
               className="
                 px-5
-                py-4
-                rounded-2xl
+                py-3
+                interactive-button
+                interactive-glow
+                rounded-xl
                 border
                 border-[var(--border)]
                 bg-[var(--bg-hover)]
@@ -881,12 +886,17 @@ export default function Home() {
                 )
               }
               className="
-                px-6
-                py-4
-                rounded-2xl
-                bg-[var(--primary)]
-                text-white
-                font-semibold
+                px-5
+                py-3
+                interactive-button
+                interactive-glow
+                rounded-xl
+                border
+                border-[var(--border)]
+                bg-[var(--bg-hover)]
+                flex
+                items-center
+                gap-2
               "
             >
               Export CSV
@@ -896,8 +906,10 @@ export default function Home() {
               onClick={clearFilters}
               className="
                 px-5
-                py-4
-                rounded-2xl
+                py-3
+                interactive-button
+                interactive-glow
+                rounded-xl
                 border
                 border-[var(--border)]
                 bg-[var(--bg-hover)]
@@ -937,14 +949,14 @@ export default function Home() {
                   setSelected={setSelectedProviders}
                 />
 
-                <FilterSection
+                <DropdownFilterSection
                   title="Servicios"
                   values={services}
                   selected={selectedServices}
                   setSelected={setSelectedServices}
                 />
 
-                <FilterSection
+                <DropdownFilterSection
                   title="Cuentas"
                   values={accounts}
                   selected={selectedAccounts}
@@ -977,14 +989,14 @@ export default function Home() {
 
               <div className="space-y-6">
 
-                <FilterSection
+                <DropdownFilterSection
                   title="Cliente"
                   values={clients}
                   selected={selectedClients}
                   setSelected={setSelectedClients}
                 />
 
-                <FilterSection
+                <DropdownFilterSection
                   title="Proyecto"
                   values={projects}
                   selected={selectedProjects}
@@ -1002,7 +1014,6 @@ export default function Home() {
                       mb-3
                     "
                   >
-                    Compliance
                   </p>
 
                   <button
@@ -1072,11 +1083,15 @@ export default function Home() {
         }
       />
 
+      <ScrollToTop />
+
     </main>
 
   );
 
 }
+
+
 
 /* ───────────────────────────── */
 /* FILTER BLOCK */
@@ -1089,13 +1104,13 @@ function FilterBlock({
 }: any) {
 
   const [open, setOpen] =
-    useState(true);
+    useState(false);
 
   return (
 
     <div
       className="
-        rounded-3xl
+        rounded-xl
         border
         border-[var(--border)]
         bg-black/10
@@ -1173,6 +1188,8 @@ function FilterBlock({
           className="
             px-5
             pb-5
+            interactive-button
+            interactive-glow
             space-y-5
           "
         >
@@ -1244,8 +1261,8 @@ function FilterSection({
 
               }}
               className={`
-                px-3
-                py-2
+                px-2.5
+                py-1.5
                 rounded-xl
                 text-sm
                 border
@@ -1272,6 +1289,158 @@ function FilterSection({
         })}
 
       </div>
+
+    </div>
+
+  );
+
+}
+
+function DropdownFilterSection({
+  title,
+  values,
+  selected,
+  setSelected
+}: any) {
+
+  const [open, setOpen] =
+    useState(false);
+
+  return (
+
+    <div>
+
+      <button
+        onClick={() =>
+          setOpen(!open)
+        }
+        className="
+          w-full
+          flex
+          items-center
+          justify-between
+          px-4
+          py-3
+          rounded-xl
+          border
+          border-[var(--border)]
+          bg-[var(--bg-hover)]
+          mb-3
+        "
+      >
+
+        <div className="text-left">
+
+          <p
+            className="
+              text-xs
+              uppercase
+              tracking-wider
+              text-[var(--text-secondary)]
+            "
+          >
+            {title}
+          </p>
+
+          <p className="text-sm mt-1">
+
+            {
+
+              selected.length === 0
+
+                ? "Todos"
+
+                : `${selected.length} seleccionados`
+
+            }
+
+          </p>
+
+        </div>
+
+        {
+
+          open
+
+            ? <ChevronUp size={16} />
+
+            : <ChevronDown size={16} />
+
+        }
+
+      </button>
+
+      {open && (
+
+        <div
+          className="
+            max-h-72
+            overflow-y-auto
+            rounded-xl
+            border
+            border-[var(--border)]
+            bg-[var(--bg-dark)]
+            p-3
+            space-y-2
+            animate-fadeSlide
+          "
+        >
+
+          {values.map((value: string) => {
+
+            const active =
+              selected.includes(value);
+
+            return (
+
+              <button
+                key={value}
+                onClick={() => {
+
+                  setSelected((prev: string[]) =>
+
+                    active
+
+                      ? prev.filter(
+                          (v) => v !== value
+                        )
+
+                      : [...prev, value]
+
+                  );
+
+                }}
+                className={`
+                  w-full
+                  text-left
+                  px-4
+                  py-3
+                  rounded-xl
+                  border
+                  text-sm
+                  transition-all
+
+                  ${
+                    active
+
+                      ? "bg-[var(--primary)] text-white border-[var(--primary)]"
+
+                      : "bg-[var(--bg-hover)] border-[var(--border)] hover:border-[var(--primary)]/30"
+                  }
+                `}
+              >
+
+                {value}
+
+              </button>
+
+            );
+
+          })}
+
+        </div>
+
+      )}
 
     </div>
 

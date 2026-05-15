@@ -293,3 +293,170 @@ tbody tr:hover {
   --text-secondary: #6b7280;
 
 }
+
+/* ========================================
+   ENTERPRISE INTERACTIONS
+======================================== */
+
+.interactive-button {
+
+  transition:
+    transform .18s ease,
+    box-shadow .25s ease,
+    border-color .25s ease,
+    background-color .25s ease,
+    opacity .25s ease;
+
+  will-change:
+    transform,
+    box-shadow;
+
+}
+
+.interactive-button:hover {
+
+  transform:
+    translateY(-2px);
+
+  box-shadow:
+    0 10px 25px rgba(0,0,0,.25);
+
+  border-color:
+    color-mix(
+      in srgb,
+      var(--primary) 35%,
+      var(--border)
+    );
+
+}
+
+.interactive-button:active {
+
+  transform:
+    translateY(0px)
+    scale(.98);
+
+}
+
+.interactive-card {
+
+  transition:
+    transform .2s ease,
+    box-shadow .3s ease,
+    border-color .3s ease;
+
+}
+
+.interactive-card:hover {
+
+  transform:
+    translateY(-3px);
+
+  box-shadow:
+    0 15px 35px rgba(0,0,0,.28);
+
+  border-color:
+    color-mix(
+      in srgb,
+      var(--primary) 25%,
+      var(--border)
+    );
+
+}
+
+.interactive-glow:hover {
+
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.04),
+    0 0 30px color-mix(
+      in srgb,
+      var(--primary) 18%,
+      transparent
+    );
+
+}
+
+.interactive-soft:hover {
+
+  background:
+    color-mix(
+      in srgb,
+      var(--bg-hover) 70%,
+      white 3%
+    );
+
+}
+
+/* ───────────────────────────── */
+/* INTERACTIONS */
+/* ───────────────────────────── */
+
+.interactive-button {
+
+  transition:
+    all .18s ease;
+
+}
+
+.interactive-button:hover {
+
+  transform:
+    translateY(-1px);
+
+  box-shadow:
+    0 10px 30px rgba(0,0,0,.25);
+
+}
+
+.interactive-button:active {
+
+  transform:
+    scale(.98);
+
+}
+
+.interactive-glow:hover {
+
+  border-color:
+    rgba(255,255,255,.12);
+
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.04),
+    0 10px 40px rgba(0,0,0,.35);
+
+}
+
+/* ───────────────────────────── */
+/* SCROLLBAR */
+/* ───────────────────────────── */
+
+::-webkit-scrollbar {
+
+  width: 8px;
+  height: 8px;
+
+}
+
+::-webkit-scrollbar-track {
+
+  background:
+    transparent;
+
+}
+
+::-webkit-scrollbar-thumb {
+
+  background:
+    rgba(255,255,255,.12);
+
+  border-radius:
+    999px;
+
+}
+
+::-webkit-scrollbar-thumb:hover {
+
+  background:
+    rgba(255,255,255,.22);
+
+}

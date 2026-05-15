@@ -165,7 +165,7 @@ export default function ResourceModal({
           bg-[var(--bg-card)]
           border
           border-[var(--border)]
-          rounded-3xl
+          rounded-2xl
           w-full
           max-w-7xl
           flex
@@ -175,7 +175,7 @@ export default function ResourceModal({
         style={{ maxHeight: "92vh" }}
       >
 
-        {/* HEADER — sticky dentro del flex */}
+        {/* HEADER */}
 
         <div
           className="
@@ -184,17 +184,17 @@ export default function ResourceModal({
             backdrop-blur-xl
             border-b
             border-[var(--border)]
-            px-6
-            py-5
-            rounded-t-3xl
+            px-5
+            py-4
+            rounded-t-2xl
           "
         >
 
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-start gap-4">
 
-            <div>
+            <div className="flex-1 min-w-0">
 
-              <div className="flex flex-wrap gap-3 mb-4">
+              <div className="flex flex-wrap gap-2 mb-4">
 
                 <Badge value={item.service} />
 
@@ -224,20 +224,21 @@ export default function ResourceModal({
 
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
 
-                <div>
+                <div className="min-w-0">
 
-                  <h2 className="text-3xl font-bold">
+                  <h2 className="text-2xl font-bold truncate">
                     {item.name}
                   </h2>
 
                   <p
                     className="
-                      text-sm
+                      text-xs
                       text-[var(--text-secondary)]
-                      mt-2
+                      mt-1
                       font-mono
+                      break-all
                     "
                   >
                     {item.id}
@@ -261,6 +262,8 @@ export default function ResourceModal({
                 rounded-xl
                 bg-red-500/10
                 text-red-400
+                text-sm
+                interactive-button
               "
             >
               Cerrar
@@ -270,14 +273,14 @@ export default function ResourceModal({
 
           {/* TABS */}
 
-          <div className="flex gap-3 mt-6 flex-wrap">
+          <div className="flex gap-2 mt-5 flex-wrap">
 
             <TabButton
               active={tab === "overview"}
               onClick={() =>
                 setTab("overview")
               }
-              icon={<Server size={16} />}
+              icon={<Server size={14} />}
               label="Overview"
             />
 
@@ -286,7 +289,7 @@ export default function ResourceModal({
               onClick={() =>
                 setTab("network")
               }
-              icon={<Network size={16} />}
+              icon={<Network size={14} />}
               label="Network"
             />
 
@@ -295,7 +298,7 @@ export default function ResourceModal({
               onClick={() =>
                 setTab("security")
               }
-              icon={<ShieldAlert size={16} />}
+              icon={<ShieldAlert size={14} />}
               label="Security"
             />
 
@@ -304,7 +307,7 @@ export default function ResourceModal({
               onClick={() =>
                 setTab("loadbalancer")
               }
-              icon={<Activity size={16} />}
+              icon={<Activity size={14} />}
               label="Load Balancing"
             />
 
@@ -312,13 +315,13 @@ export default function ResourceModal({
 
         </div>
 
-        {/* BODY — flex-1 + overflow-auto: ocupa todo el espacio restante y scrollea */}
+        {/* BODY */}
 
         <div
           className="
             flex-1
             overflow-y-auto
-            p-6
+            p-5
             min-h-0
           "
         >
@@ -329,12 +332,12 @@ export default function ResourceModal({
 
             <div
               className="
-                mb-6
+                mb-5
                 rounded-2xl
                 border
                 border-red-500/20
                 bg-red-500/10
-                p-5
+                p-4
                 flex
                 items-start
                 gap-4
@@ -342,7 +345,7 @@ export default function ResourceModal({
             >
 
               <ShieldAlert
-                size={24}
+                size={20}
                 className="text-red-400 mt-1"
               />
 
@@ -353,6 +356,7 @@ export default function ResourceModal({
                     font-semibold
                     text-red-400
                     mb-1
+                    text-sm
                   "
                 >
                   Public Exposure Detected
@@ -360,7 +364,7 @@ export default function ResourceModal({
 
                 <p
                   className="
-                    text-sm
+                    text-xs
                     text-red-200/80
                   "
                 >
@@ -376,12 +380,12 @@ export default function ResourceModal({
 
             <div
               className="
-                mb-6
+                mb-5
                 rounded-2xl
                 border
                 border-green-500/20
                 bg-green-500/10
-                p-5
+                p-4
                 flex
                 items-start
                 gap-4
@@ -389,7 +393,7 @@ export default function ResourceModal({
             >
 
               <ShieldCheck
-                size={24}
+                size={20}
                 className="text-green-400 mt-1"
               />
 
@@ -400,6 +404,7 @@ export default function ResourceModal({
                     font-semibold
                     text-green-400
                     mb-1
+                    text-sm
                   "
                 >
                   No Public Exposure
@@ -407,7 +412,7 @@ export default function ResourceModal({
 
                 <p
                   className="
-                    text-sm
+                    text-xs
                     text-green-200/80
                   "
                 >
@@ -424,11 +429,11 @@ export default function ResourceModal({
 
           {tab === "overview" && (
 
-            <div className="space-y-8">
+            <div className="space-y-6">
 
               <SectionCard title="Información General">
 
-                <div className="mb-5">
+                <div className="mb-4">
 
                   <div
                     className={`
@@ -445,15 +450,15 @@ export default function ResourceModal({
                     `}
                   >
 
-                    <ShieldAlert size={18} />
+                    <ShieldAlert size={16} />
 
                     <div>
 
-                      <p className="text-xs opacity-70">
+                      <p className="text-[10px] opacity-70">
                         Risk Level
                       </p>
 
-                      <p className="font-semibold">
+                      <p className="font-semibold text-sm">
                         {item.riskLevel || "SAFE"}
                       </p>
 
@@ -469,7 +474,7 @@ export default function ResourceModal({
                     grid-cols-1
                     md:grid-cols-2
                     xl:grid-cols-3
-                    gap-4
+                    gap-3
                   "
                 >
 
@@ -501,7 +506,7 @@ export default function ResourceModal({
 
           {tab === "network" && (
 
-            <div className="space-y-8">
+            <div className="space-y-6">
 
               <SectionCard title="Topology">
 
@@ -510,7 +515,7 @@ export default function ResourceModal({
                   {item.publiclyExposed && (
 
                     <TopologyNode
-                      icon={<Globe size={18} />}
+                      icon={<Globe size={16} />}
                       label="Internet"
                       type="external"
                     />
@@ -518,81 +523,10 @@ export default function ResourceModal({
                   )}
 
                   <TopologyNode
-                    icon={<Boxes size={18} />}
+                    icon={<Boxes size={16} />}
                     label={`${item.service} · ${item.name}`}
                     type={item.topologyType}
                   />
-
-                  {(item.relationships || []).map((rel, index) => {
-
-                    const related =
-                      findResource(rel.targetId);
-
-                    return (
-
-                      <div
-                        key={index}
-                        className="ml-6"
-                      >
-
-                        <div className="flex items-center gap-3 mb-2">
-
-                          <ArrowDown
-                            size={16}
-                            className="text-[var(--text-secondary)]"
-                          />
-
-                          <span
-                            className="
-                              text-xs
-                              uppercase
-                              tracking-wide
-                              text-[var(--text-secondary)]
-                            "
-                          >
-                            {rel.type.replaceAll("_", " ")}
-                          </span>
-
-                        </div>
-
-                        <TopologyNode
-
-                          clickable={!!related}
-
-                          onClick={() => {
-
-                            if (related) {
-
-                              onNavigate(related);
-
-                            }
-
-                          }}
-
-                          icon={
-
-                            rel.targetService === "VPC"
-
-                              ? <Network size={18} />
-
-                              : rel.targetService === "Subnet"
-
-                                ? <Boxes size={18} />
-
-                                : <Server size={18} />
-
-                          }
-
-                          label={`${rel.targetService} · ${rel.targetName}`}
-
-                          type="related"
-                        />
-
-                      </div>
-
-                    );
-
-                  })}
 
                 </div>
 
@@ -600,7 +534,7 @@ export default function ResourceModal({
 
               <SectionCard title="Networking">
 
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-2 gap-3">
 
                   <InfoCard
                     label="Private IP"
@@ -634,13 +568,13 @@ export default function ResourceModal({
 
           {tab === "security" && (
 
-            <div className="space-y-8">
+            <div className="space-y-6">
 
               <SectionCard title="Risk Analysis">
 
                 <div
                   className={`
-                    p-5
+                    p-4
                     rounded-2xl
                     border
 
@@ -654,13 +588,13 @@ export default function ResourceModal({
                   `}
                 >
 
-                  <p className="font-bold text-lg mb-4">
+                  <p className="font-bold text-base mb-4">
                     {riskLevel}
                   </p>
 
                   {securityAnalysis.length === 0 ? (
 
-                    <p className="text-green-400">
+                    <p className="text-green-400 text-sm">
                       No se encontraron riesgos críticos.
                     </p>
 
@@ -699,173 +633,6 @@ export default function ResourceModal({
 
           )}
 
-          {/* LOAD BALANCER */}
-
-          {tab === "loadbalancer" && (
-
-            <div className="space-y-8">
-
-              {(item.listeners || []).length > 0 && (
-
-                <SectionCard title="Listeners">
-
-                  <div className="space-y-4">
-
-                    {item.listeners?.map((listener, idx) => (
-
-                      <div
-                        key={idx}
-                        className="
-                          p-5
-                          rounded-2xl
-                          border
-                          border-[var(--border)]
-                          bg-[var(--bg-hover)]/30
-                        "
-                      >
-
-                        <div className="flex items-center justify-between">
-
-                          <div>
-
-                            <p className="font-semibold">
-                              {listener.name}
-                            </p>
-
-                            <p className="text-sm text-[var(--text-secondary)] mt-1">
-                              {listener.protocol} : {listener.port}
-                            </p>
-
-                          </div>
-
-                          <CopyButton
-                            value={listener.arn || ""}
-                          />
-
-                        </div>
-
-                      </div>
-
-                    ))}
-
-                  </div>
-
-                </SectionCard>
-
-              )}
-
-              {(item.targetGroups || []).length > 0 && (
-
-                <SectionCard title="Target Relationships">
-
-                  <div className="space-y-6">
-
-                    {item.targetGroups?.map((tg, idx) => (
-
-                      <div
-                        key={idx}
-                        className="
-                          rounded-2xl
-                          border
-                          border-[var(--border)]
-                          overflow-hidden
-                        "
-                      >
-
-                        <div
-                          className="
-                            p-5
-                            bg-[var(--bg-hover)]/30
-                          "
-                        >
-
-                          <p className="font-bold text-lg">
-                            {tg.name}
-                          </p>
-
-                          <p className="text-sm text-[var(--text-secondary)] mt-1">
-                            {tg.protocol} : {tg.port}
-                          </p>
-
-                        </div>
-
-                        <div className="p-5 space-y-3">
-
-                          {(tg.targets || []).map((target, i) => {
-
-                            const related =
-                              findResource(target.id);
-
-                            return (
-
-                              <button
-                                key={i}
-
-                                onClick={() => {
-
-                                  if (related) {
-
-                                    onNavigate(related);
-
-                                  }
-
-                                }}
-
-                                className="
-                                  w-full
-                                  flex
-                                  items-center
-                                  justify-between
-                                  p-4
-                                  rounded-xl
-                                  bg-black/20
-                                  hover:bg-[var(--bg-hover)]
-                                  transition-all
-                                  border
-                                  border-transparent
-                                  hover:border-cyan-400
-                                  text-left
-                                "
-                              >
-
-                                <div>
-
-                                  <p className="font-mono">
-                                    {target.id}
-                                  </p>
-
-                                  <p className="text-xs text-gray-400 mt-1">
-                                    Port {target.port}
-                                  </p>
-
-                                </div>
-
-                                <HealthBadge
-                                  status={target.health}
-                                />
-
-                              </button>
-
-                            );
-
-                          })}
-
-                        </div>
-
-                      </div>
-
-                    ))}
-
-                  </div>
-
-                </SectionCard>
-
-              )}
-
-            </div>
-
-          )}
-
         </div>
 
       </div>
@@ -888,15 +655,16 @@ function TabButton({
     <button
       onClick={onClick}
       className={`
-        px-4
-        py-3
-        rounded-2xl
+        px-3
+        py-2
+        rounded-xl
         flex
         items-center
         gap-2
-        text-sm
+        text-xs
         border
         transition-all
+        interactive-button
 
         ${
           active
@@ -924,10 +692,10 @@ function Badge({
 
     <span
       className={`
-        px-3
+        px-2.5
         py-1
         rounded-full
-        text-xs
+        text-[10px]
         border
 
         ${
@@ -960,10 +728,10 @@ function RiskBadge({
 
     <span
       className={`
-        px-3
+        px-2.5
         py-1
         rounded-full
-        text-xs
+        text-[10px]
         border
 
         ${
@@ -980,36 +748,6 @@ function RiskBadge({
       `}
     >
       {risk}
-    </span>
-
-  );
-
-}
-
-function HealthBadge({
-  status
-}: any) {
-
-  return (
-
-    <span
-      className={`
-        px-3
-        py-1
-        rounded-full
-        text-xs
-        border
-
-        ${
-          status === "healthy"
-
-            ? "bg-green-500/10 text-green-400 border-green-500/20"
-
-            : "bg-red-500/10 text-red-400 border-red-500/20"
-        }
-      `}
-    >
-      {status}
     </span>
 
   );
@@ -1034,10 +772,12 @@ function CopyButton({
         border
         border-[var(--border)]
         hover:bg-[var(--bg-hover)]
+        transition-all
+        interactive-button
       "
     >
 
-      <Copy size={16} />
+      <Copy size={14} />
 
     </button>
 
@@ -1057,12 +797,12 @@ function SectionCard({
         bg-[var(--bg-hover)]/20
         border
         border-[var(--border)]
-        rounded-3xl
-        p-6
+        rounded-2xl
+        p-5
       "
     >
 
-      <h3 className="text-xl font-bold mb-6">
+      <h3 className="text-lg font-bold mb-5">
         {title}
       </h3>
 
@@ -1083,23 +823,53 @@ function InfoCard({
 
     <div
       className="
-        p-5
-        rounded-2xl
+        p-4
+        rounded-xl
         bg-black/20
         border
         border-[var(--border)]
       "
     >
 
-      <p className="text-xs text-[var(--text-secondary)] uppercase mb-2">
+      <p className="text-[10px] text-[var(--text-secondary)] uppercase mb-2">
         {label}
       </p>
 
-      <p className="text-sm break-all">
+      <p className="text-xs break-all">
         {value || "N/A"}
       </p>
 
     </div>
+
+  );
+
+}
+
+function HealthBadge({
+  status
+}: any) {
+
+  return (
+
+    <span
+      className={`
+        px-2.5
+        py-1
+        rounded-full
+        text-[10px]
+        border
+
+        ${
+          status === "healthy"
+
+            ? "bg-green-500/10 text-green-400 border-green-500/20"
+
+            : "bg-red-500/10 text-red-400 border-red-500/20"
+        }
+      `}
+    >
+      {status}
+    </span>
 
   );
 
@@ -1137,8 +907,8 @@ function TopologyNode({
         flex
         items-center
         gap-4
-        p-4
-        rounded-2xl
+        p-3
+        rounded-xl
         border
         text-left
         transition-all
@@ -1168,25 +938,11 @@ function TopologyNode({
 
       <div className="flex-1">
 
-        <p className="font-medium">
+        <p className="font-medium text-sm">
           {label}
         </p>
 
       </div>
-
-      {clickable && (
-
-        <div
-          className="
-            text-xs
-            text-cyan-400
-            font-semibold
-          "
-        >
-          OPEN
-        </div>
-
-      )}
 
     </button>
 

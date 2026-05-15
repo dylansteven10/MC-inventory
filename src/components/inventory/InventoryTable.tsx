@@ -42,7 +42,7 @@ export default function InventoryTable({
     <div
       className="
         bg-[var(--bg-card)]/60
-        rounded-3xl
+        rounded-2xl
         border
         border-[var(--border)]
         overflow-hidden
@@ -131,10 +131,10 @@ export default function InventoryTable({
 
               <th
                 className="
-                  px-5
-                  py-5
+                  px-4
+                  py-3
                   text-left
-                  text-xs
+                  text-[11px]
                   uppercase
                   tracking-wider
                   text-[var(--text-secondary)]
@@ -159,21 +159,22 @@ export default function InventoryTable({
                 className="
                   border-b
                   border-[var(--border)]
-                  hover:bg-[var(--bg-hover)]/40
+                  hover:bg-[var(--bg-hover)]/50
+                  hover:shadow-[0_0_0_1px_rgba(255,255,255,0.03)]
                   transition-all
                   cursor-pointer
                 "
               >
 
-                <td className="px-5 py-5 text-sm">
+                <td className="px-4 py-3 text-[13px]">
 
                   <div
                     className="
                       inline-flex
                       items-center
-                      px-3
-                      py-1.5
-                      rounded-xl
+                      px-2.5
+                      py-1
+                      rounded-lg
                       bg-[var(--bg-hover)]
                       border
                       border-[var(--border)]
@@ -184,11 +185,11 @@ export default function InventoryTable({
 
                 </td>
 
-                <td className="px-5 py-5 text-sm truncate">
+                <td className="px-4 py-3 text-[13px] truncate">
                   {item.accountName}
                 </td>
 
-                <td className="px-5 py-5">
+                <td className="px-4 py-3">
 
                   <ServiceBadge
                     service={item.service}
@@ -196,17 +197,17 @@ export default function InventoryTable({
 
                 </td>
 
-                <td className="px-5 py-5">
+                <td className="px-4 py-3">
 
                   <div className="min-w-0">
 
-                    <p className="font-semibold truncate">
+                    <p className="font-semibold truncate text-[13px]">
                       {item.name}
                     </p>
 
                     <p
                       className="
-                        text-xs
+                        text-[11px]
                         text-[var(--text-secondary)]
                         font-mono
                         truncate
@@ -220,17 +221,17 @@ export default function InventoryTable({
 
                 </td>
 
-                <td className="px-5 py-5">
+                <td className="px-4 py-3">
 
-                  <div className="space-y-2">
+                  <div className="space-y-1">
 
-                    <p className="text-sm truncate">
+                    <p className="text-[13px] truncate">
                       {item.host}
                     </p>
 
                     {item.privateIp && (
 
-                      <p className="text-xs text-cyan-400 truncate">
+                      <p className="text-[11px] text-cyan-400 truncate">
                         PRI: {item.privateIp}
                       </p>
 
@@ -238,7 +239,7 @@ export default function InventoryTable({
 
                     {item.publicIp && (
 
-                      <p className="text-xs text-orange-400 truncate">
+                      <p className="text-[11px] text-orange-400 truncate">
                         PUB: {item.publicIp}
                       </p>
 
@@ -248,7 +249,7 @@ export default function InventoryTable({
 
                 </td>
 
-                <td className="px-5 py-5">
+                <td className="px-4 py-3">
 
                   <StatusBadge
                     status={item.status}
@@ -256,7 +257,7 @@ export default function InventoryTable({
 
                 </td>
 
-                <td className="px-5 py-5">
+                <td className="px-4 py-3">
 
                   <TagsList
                     tags={item.tags}
@@ -300,15 +301,17 @@ function Header({
         onSort(field)
       }
       className="
-        px-5
-        py-5
+        px-4
+        py-3
         text-left
-        text-xs
+        text-[11px]
         uppercase
         tracking-wider
         text-[var(--text-secondary)]
         cursor-pointer
         select-none
+        hover:text-white
+        transition-all
       "
     >
 
@@ -320,14 +323,14 @@ function Header({
 
           sortDirection === "asc"
 
-            ? <ArrowUp size={14} />
+            ? <ArrowUp size={12} />
 
-            : <ArrowDown size={14} />
+            : <ArrowDown size={12} />
 
         ) : (
 
           <ArrowUp
-            size={14}
+            size={12}
             className="opacity-30"
           />
 

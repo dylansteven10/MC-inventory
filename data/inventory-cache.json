@@ -1,5 +1,5 @@
 {
-  "timestamp": 1778871534771,
+  "timestamp": 1778878996812,
   "data": [
     {
       "uniqueKey": "AWS-954669981484-EC2-i-0be5d98e0453855bd",
@@ -5003,7 +5003,7 @@
             {
               "id": "i-017d81817f21ddeb4",
               "port": 8090,
-              "health": "healthy"
+              "health": "unhealthy"
             }
           ]
         }
@@ -5267,6 +5267,13 @@
               "protocol": "tcp",
               "fromPort": 8443,
               "toPort": 8443,
+              "cidr": "0.0.0.0/0",
+              "direction": "inbound"
+            },
+            {
+              "protocol": "tcp",
+              "fromPort": 4443,
+              "toPort": 4443,
               "cidr": "0.0.0.0/0",
               "direction": "inbound"
             },
@@ -6611,6 +6618,13 @@
             },
             {
               "protocol": "tcp",
+              "fromPort": 4443,
+              "toPort": 4443,
+              "cidr": "0.0.0.0/0",
+              "direction": "inbound"
+            },
+            {
+              "protocol": "tcp",
               "fromPort": 443,
               "toPort": 443,
               "cidr": "0.0.0.0/0",
@@ -6632,6 +6646,12 @@
           "protocol": "HTTPS",
           "port": 8443,
           "arn": "arn:aws:elasticloadbalancing:us-east-1:185793273623:listener/app/fortiweb/d147c8721ffb1f98/37ff3ea3c29ed0e0"
+        },
+        {
+          "name": "HTTPS-4443",
+          "protocol": "HTTPS",
+          "port": 4443,
+          "arn": "arn:aws:elasticloadbalancing:us-east-1:185793273623:listener/app/fortiweb/d147c8721ffb1f98/3d73662675ab1648"
         },
         {
           "name": "HTTPS-443",
@@ -6715,6 +6735,32 @@
             {
               "id": "10.150.1.141",
               "port": 443,
+              "health": "unhealthy"
+            }
+          ]
+        },
+        {
+          "name": "tg-siga-santander",
+          "protocol": "HTTPS",
+          "port": 443,
+          "targetType": "ip",
+          "targets": [
+            {
+              "id": "10.150.1.150",
+              "port": 443,
+              "health": "unhealthy"
+            }
+          ]
+        },
+        {
+          "name": "tg-siga-santander-4443",
+          "protocol": "HTTPS",
+          "port": 4443,
+          "targetType": "ip",
+          "targets": [
+            {
+              "id": "10.150.1.150",
+              "port": 4443,
               "health": "unhealthy"
             }
           ]
@@ -6875,6 +6921,18 @@
           "type": "TARGETS",
           "targetId": "10.150.1.141",
           "targetName": "10.150.1.141",
+          "targetService": "UNKNOWN"
+        },
+        {
+          "type": "TARGETS",
+          "targetId": "10.150.1.150",
+          "targetName": "10.150.1.150",
+          "targetService": "UNKNOWN"
+        },
+        {
+          "type": "TARGETS",
+          "targetId": "10.150.1.150",
+          "targetName": "10.150.1.150",
           "targetService": "UNKNOWN"
         },
         {

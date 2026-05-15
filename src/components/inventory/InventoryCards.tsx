@@ -23,7 +23,7 @@ export default function InventoryCards({
 
   return (
 
-    <div className="space-y-4">
+    <div className="space-y-3">
 
       {data.map((item) => (
 
@@ -34,24 +34,28 @@ export default function InventoryCards({
             bg-[var(--bg-card)]/60
             border
             border-[var(--border)]
-            rounded-3xl
-            p-5
+            rounded-2xl
+            p-4
             backdrop-blur-xl
             cursor-pointer
+            interactive-button
+            interactive-glow
+            hover:border-[var(--primary)]/30
+            hover:bg-[var(--bg-hover)]/30
           "
         >
 
-          <div className="flex justify-between gap-4 mb-4">
+          <div className="flex justify-between gap-4 mb-3">
 
             <div>
 
-              <h3 className="font-bold text-lg">
+              <h3 className="font-bold text-base">
                 {item.name}
               </h3>
 
               <p
                 className="
-                  text-xs
+                  text-[11px]
                   text-[var(--text-secondary)]
                   font-mono
                 "
@@ -67,7 +71,7 @@ export default function InventoryCards({
 
           </div>
 
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 mb-3">
 
             <StatusBadge
               status={item.status}
@@ -75,7 +79,7 @@ export default function InventoryCards({
 
             <span
               className="
-                text-xs
+                text-[11px]
                 text-[var(--text-secondary)]
               "
             >
@@ -84,9 +88,9 @@ export default function InventoryCards({
 
           </div>
 
-          <div className="mb-4">
+          <div className="mb-3">
 
-            <p className="text-xs text-gray-400 mb-1">
+            <p className="text-[11px] text-gray-400 mb-1">
               Network
             </p>
 
@@ -98,9 +102,9 @@ export default function InventoryCards({
 
           {(item.securityGroups || []).length > 0 && (
 
-            <div className="mb-4">
+            <div className="mb-3">
 
-              <p className="text-xs text-gray-400 mb-2">
+              <p className="text-[11px] text-gray-400 mb-2">
                 Security Groups
               </p>
 
@@ -118,7 +122,7 @@ export default function InventoryCards({
                       rounded-lg
                       bg-yellow-500/10
                       text-yellow-400
-                      text-xs
+                      text-[11px]
                     "
                   >
                     {sg.name}
