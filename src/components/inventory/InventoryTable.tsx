@@ -41,19 +41,35 @@ export default function InventoryTable({
 
     <div
       className="
-        bg-[var(--bg-card)]/50
+        bg-[var(--bg-card)]/60
         rounded-3xl
         border
         border-[var(--border)]
         overflow-hidden
         backdrop-blur-xl
-        animate-fadeSlide
       "
     >
 
       <div className="overflow-x-auto">
 
-        <table className="w-full">
+        <table
+          className="w-full table-fixed"
+          style={{
+            minWidth: "1200px"
+          }}
+        >
+
+          <colgroup>
+
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "24%" }} />
+            <col style={{ width: "22%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "18%" }} />
+
+          </colgroup>
 
           <thead
             className="
@@ -113,11 +129,17 @@ export default function InventoryTable({
                 sortDirection={sortDirection}
               />
 
-              <th className="px-5 py-4 text-left text-xs">
-                SGs
-              </th>
-
-              <th className="px-5 py-4 text-left text-xs">
+              <th
+                className="
+                  px-5
+                  py-5
+                  text-left
+                  text-xs
+                  uppercase
+                  tracking-wider
+                  text-[var(--text-secondary)]
+                "
+              >
                 Tags
               </th>
 
@@ -131,35 +153,54 @@ export default function InventoryTable({
 
               <tr
                 key={item.uniqueKey}
-                onClick={() => onSelect(item)}
+                onClick={() =>
+                  onSelect(item)
+                }
                 className="
                   border-b
                   border-[var(--border)]
-                  hover:bg-[var(--bg-hover)]/50
+                  hover:bg-[var(--bg-hover)]/40
                   transition-all
                   cursor-pointer
                 "
               >
 
-                <td className="px-5 py-4 text-sm">
-                  {item.provider}
+                <td className="px-5 py-5 text-sm">
+
+                  <div
+                    className="
+                      inline-flex
+                      items-center
+                      px-3
+                      py-1.5
+                      rounded-xl
+                      bg-[var(--bg-hover)]
+                      border
+                      border-[var(--border)]
+                    "
+                  >
+                    {item.provider}
+                  </div>
+
                 </td>
 
-                <td className="px-5 py-4 text-sm">
+                <td className="px-5 py-5 text-sm truncate">
                   {item.accountName}
                 </td>
 
-                <td className="px-5 py-4">
+                <td className="px-5 py-5">
+
                   <ServiceBadge
                     service={item.service}
                   />
+
                 </td>
 
-                <td className="px-5 py-4">
+                <td className="px-5 py-5">
 
-                  <div>
+                  <div className="min-w-0">
 
-                    <p className="font-semibold">
+                    <p className="font-semibold truncate">
                       {item.name}
                     </p>
 
@@ -168,6 +209,8 @@ export default function InventoryTable({
                         text-xs
                         text-[var(--text-secondary)]
                         font-mono
+                        truncate
+                        mt-1
                       "
                     >
                       {item.id}
@@ -177,22 +220,17 @@ export default function InventoryTable({
 
                 </td>
 
-                <td className="px-5 py-4">
+                <td className="px-5 py-5">
 
-                  <div
-                    className="
-                      text-xs
-                      space-y-1
-                    "
-                  >
+                  <div className="space-y-2">
 
-                    <p>
+                    <p className="text-sm truncate">
                       {item.host}
                     </p>
 
                     {item.privateIp && (
 
-                      <p className="text-cyan-400">
+                      <p className="text-xs text-cyan-400 truncate">
                         PRI: {item.privateIp}
                       </p>
 
@@ -200,7 +238,7 @@ export default function InventoryTable({
 
                     {item.publicIp && (
 
-                      <p className="text-orange-400">
+                      <p className="text-xs text-orange-400 truncate">
                         PUB: {item.publicIp}
                       </p>
 
@@ -210,52 +248,20 @@ export default function InventoryTable({
 
                 </td>
 
-                <td className="px-5 py-4">
+                <td className="px-5 py-5">
+
                   <StatusBadge
                     status={item.status}
                   />
-                </td>
-
-                <td className="px-5 py-4">
-
-                  <div
-                    className="
-                      flex
-                      flex-wrap
-                      gap-2
-                    "
-                  >
-
-                    {(item.securityGroups || [])
-                      .slice(0, 2)
-                      .map((sg) => (
-
-                      <span
-                        key={sg.id}
-                        className="
-                          px-2
-                          py-1
-                          rounded-lg
-                          bg-yellow-500/10
-                          text-yellow-400
-                          text-xs
-                          border
-                          border-yellow-500/20
-                        "
-                      >
-                        {sg.name}
-                      </span>
-
-                    ))}
-
-                  </div>
 
                 </td>
 
-                <td className="px-5 py-4 min-w-[260px]">
+                <td className="px-5 py-5">
+
                   <TagsList
                     tags={item.tags}
                   />
+
                 </td>
 
               </tr>
@@ -290,10 +296,12 @@ function Header({
   return (
 
     <th
-      onClick={() => onSort(field)}
+      onClick={() =>
+        onSort(field)
+      }
       className="
         px-5
-        py-4
+        py-5
         text-left
         text-xs
         uppercase
@@ -306,7 +314,7 @@ function Header({
 
       <div className="flex items-center gap-2">
 
-        {title}
+        <span>{title}</span>
 
         {active ? (
 

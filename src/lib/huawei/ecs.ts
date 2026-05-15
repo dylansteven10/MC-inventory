@@ -128,7 +128,7 @@ export async function getHuaweiECSInventory() {
                   hostIp,
 
                 status:
-                  server.status || "UNKNOWN",
+                  server.status === "ACTIVE" ? "running" : server.status === "SHUTOFF" ? "stopped" : server.status || "UNKNOWN",
 
                 operatingSystem:
                   "Linux",

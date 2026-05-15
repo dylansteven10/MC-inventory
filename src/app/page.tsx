@@ -7,10 +7,13 @@ import {
 } from "react";
 
 import {
+  Cloud,
   Database,
   Shield,
-  Cloud,
-  X
+  RotateCcw,
+  Filter,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 
 import { InventoryItem } from "@/types/inventory";
@@ -19,6 +22,7 @@ import InventoryTable from "@/components/inventory/InventoryTable";
 import InventoryCards from "@/components/inventory/InventoryCards";
 import MetricsCards from "@/components/inventory/MetricsCards";
 import ResourceModal from "@/components/inventory/ResourceModal";
+import UserMenu from "@/components/layout/UserMenu";
 
 import {
   exportCSV
@@ -46,8 +50,17 @@ export default function Home() {
   const [selectedItem, setSelectedItem] =
     useState<InventoryItem | null>(null);
 
+  const [filtersOpen, setFiltersOpen] =
+    useState(true);
+
   const [search, setSearch] =
     useState("");
+
+  const [selectedProviders, setSelectedProviders] =
+    useState<string[]>([]);
+
+  const [selectedServices, setSelectedServices] =
+    useState<string[]>([]);
 
   const [selectedClients, setSelectedClients] =
     useState<string[]>([]);
@@ -58,6 +71,9 @@ export default function Home() {
   const [selectedAccounts, setSelectedAccounts] =
     useState<string[]>([]);
 
+  const [selectedStatuses, setSelectedStatuses] =
+    useState<string[]>([]);
+
   const [onlyWithoutTags, setOnlyWithoutTags] =
     useState(false);
 
@@ -66,6 +82,10 @@ export default function Home() {
 
   const [sortDirection, setSortDirection] =
     useState<"asc" | "desc">("asc");
+
+  /* ───────────────────────────── */
+  /* FETCH */
+  /* ───────────────────────────── */
 
   useEffect(() => {
 
@@ -102,6 +122,10 @@ export default function Home() {
 
   }, []);
 
+  /* ───────────────────────────── */
+  /* RESPONSIVE */
+  /* ───────────────────────────── */
+
   useEffect(() => {
 
     const check = () =>
@@ -124,13 +148,111 @@ export default function Home() {
 
   }, []);
 
+  /* ───────────────────────────── */
+  /* PROVIDER FILTERED DATA */
+  /* ───────────────────────────── */
+
+  const providerFilteredData =
+    useMemo(() => {
+
+      if (
+        selectedProviders.length === 0
+      ) {
+
+        return data;
+
+      }
+
+      return data.filter((i) =>
+
+        selectedProviders.includes(
+          i.provider || ""
+        )
+
+      );
+
+    }, [
+
+      data,
+      selectedProviders
+
+    ]);
+
+  /* ───────────────────────────── */
+  /* FILTER OPTIONS */
+  /* ───────────────────────────── */
+
+  const providers = useMemo(() => {
+
+    return [
+
+      ...new Set(
+
+        data.map(
+          (i) => i.provider || "N/A"
+        )
+
+      )
+
+    ].sort();
+
+  }, [data]);
+
+  const services = useMemo(() => {
+
+    return [
+
+      ...new Set(
+
+        providerFilteredData.map(
+          (i) => i.service
+        )
+
+      )
+
+    ].sort();
+
+  }, [providerFilteredData]);
+
+  const accounts = useMemo(() => {
+
+    return [
+
+      ...new Set(
+
+        providerFilteredData.map(
+          (i) => i.accountName
+        )
+
+      )
+
+    ].sort();
+
+  }, [providerFilteredData]);
+
+  const statuses = useMemo(() => {
+
+    return [
+
+      ...new Set(
+
+        providerFilteredData.map(
+          (i) => i.status
+        )
+
+      )
+
+    ].sort();
+
+  }, [providerFilteredData]);
+
   const clients = useMemo(() => {
 
     return [
 
       ...new Set(
 
-        data
+        providerFilteredData
           .map(
 
             (i) =>
@@ -145,7 +267,7 @@ export default function Home() {
 
     ].sort();
 
-  }, [data]);
+  }, [providerFilteredData]);
 
   const projects = useMemo(() => {
 
@@ -153,7 +275,7 @@ export default function Home() {
 
       ...new Set(
 
-        data
+        providerFilteredData
           .map(
 
             (i) =>
@@ -168,23 +290,11 @@ export default function Home() {
 
     ].sort();
 
-  }, [data]);
+  }, [providerFilteredData]);
 
-  const accounts = useMemo(() => {
-
-    return [
-
-      ...new Set(
-
-        data.map(
-          (i) => i.accountName
-        )
-
-      )
-
-    ].sort();
-
-  }, [data]);
+  /* ───────────────────────────── */
+  /* FILTERING */
+  /* ───────────────────────────── */
 
   const filteredData = useMemo(() => {
 
@@ -224,6 +334,38 @@ export default function Home() {
 
           tagText.includes(q);
 
+        const providerMatch =
+
+          selectedProviders.length === 0 ||
+
+          selectedProviders.includes(
+            item.provider || ""
+          );
+
+        const serviceMatch =
+
+          selectedServices.length === 0 ||
+
+          selectedServices.includes(
+            item.service
+          );
+
+        const accountMatch =
+
+          selectedAccounts.length === 0 ||
+
+          selectedAccounts.includes(
+            item.accountName
+          );
+
+        const statusMatch =
+
+          selectedStatuses.length === 0 ||
+
+          selectedStatuses.includes(
+            item.status
+          );
+
         const client =
           item.tags?.cliente ||
           item.tags?.Cliente;
@@ -248,14 +390,6 @@ export default function Home() {
             project || ""
           );
 
-        const accountMatch =
-
-          selectedAccounts.length === 0 ||
-
-          selectedAccounts.includes(
-            item.accountName
-          );
-
         const noTagsMatch =
 
           !onlyWithoutTags ||
@@ -267,9 +401,12 @@ export default function Home() {
         return (
 
           searchMatch &&
+          providerMatch &&
+          serviceMatch &&
+          accountMatch &&
+          statusMatch &&
           clientMatch &&
           projectMatch &&
-          accountMatch &&
           noTagsMatch
 
         );
@@ -343,14 +480,21 @@ export default function Home() {
 
     data,
     search,
+    selectedProviders,
+    selectedServices,
     selectedClients,
     selectedProjects,
     selectedAccounts,
+    selectedStatuses,
     onlyWithoutTags,
     sortField,
     sortDirection
 
   ]);
+
+  /* ───────────────────────────── */
+  /* SORT */
+  /* ───────────────────────────── */
 
   const handleSort = (
     field: SortField
@@ -376,6 +520,34 @@ export default function Home() {
 
   };
 
+  /* ───────────────────────────── */
+  /* CLEAR */
+  /* ───────────────────────────── */
+
+  const clearFilters = () => {
+
+    setSearch("");
+
+    setSelectedProviders([]);
+
+    setSelectedServices([]);
+
+    setSelectedClients([]);
+
+    setSelectedProjects([]);
+
+    setSelectedAccounts([]);
+
+    setSelectedStatuses([]);
+
+    setOnlyWithoutTags(false);
+
+  };
+
+  /* ───────────────────────────── */
+  /* LOADING */
+  /* ───────────────────────────── */
+
   if (loading) {
 
     return (
@@ -386,27 +558,10 @@ export default function Home() {
           flex
           items-center
           justify-center
-          relative
-          overflow-hidden
         "
       >
 
-        <div
-          className="
-            absolute
-            inset-0
-            bg-black/40
-            backdrop-blur-3xl
-          "
-        />
-
-        <div
-          className="
-            relative
-            z-10
-            text-center
-          "
-        >
+        <div className="text-center">
 
           <div
             className="
@@ -422,7 +577,6 @@ export default function Home() {
               text-white
               text-4xl
               font-bold
-              shadow-2xl
             "
             style={{
               background:
@@ -432,47 +586,13 @@ export default function Home() {
             MC
           </div>
 
-          <h1
-            className="
-              text-5xl
-              font-bold
-              mb-3
-            "
-          >
+          <h1 className="text-5xl font-bold mb-4">
             MC Inventory
           </h1>
 
-          <p
-            className="
-              text-[var(--text-secondary)]
-              text-lg
-              mb-10
-            "
-          >
-            Cargando servicios del inventario cloud...
+          <p className="text-[var(--text-secondary)] text-lg">
+            Cargando inventario cloud...
           </p>
-
-          <div
-            className="
-              flex
-              justify-center
-              gap-6
-              text-sm
-            "
-          >
-
-            <LoadingCard
-              icon={<Cloud size={18} />}
-              text="AWS"
-            />
-
-            <LoadingCard
-              icon={<Cloud size={18} />}
-              text="HUAWEI"
-            />
-
-
-          </div>
 
         </div>
 
@@ -485,81 +605,113 @@ export default function Home() {
   return (
 
     <main
-      className="min-h-screen p-6"
+      className="min-h-screen px-4 py-6"
       style={{
         background:
           "linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-card) 100%)"
       }}
     >
 
+      {/* HEADER */}
+
       <div className="mb-8">
 
-        <div className="flex items-center gap-4 mb-3">
+        <div className="flex items-center justify-between gap-4">
 
-          <div
-            className="
-              w-14
-              h-14
-              rounded-2xl
-              flex
-              items-center
-              justify-center
-              text-white
-              text-xl
-              font-bold
-            "
-            style={{
-              background:
-                "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))"
-            }}
-          >
-            MC
-          </div>
+          <div className="flex items-center gap-4">
 
-          <div>
-
-            <h1
+            <div
               className="
-                text-4xl
+                w-14
+                h-14
+                rounded-2xl
+                flex
+                items-center
+                justify-center
+                text-white
+                text-xl
                 font-bold
               "
               style={{
                 background:
-                  "linear-gradient(135deg, var(--text-primary), var(--text-secondary))",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent"
+                  "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))"
               }}
             >
-              MC Inventory
-            </h1>
+              MC
+            </div>
 
-            <p className="text-[var(--text-secondary)]">
-              Enterprise Cloud Inventory
-            </p>
+            <div>
+
+              <h1 className="text-4xl font-bold">
+                MC Inventory
+              </h1>
+
+              <p className="text-[var(--text-secondary)]">
+                Enterprise Cloud Inventory
+              </p>
+
+            </div>
 
           </div>
+
+          <UserMenu />
 
         </div>
 
       </div>
 
+      {/* RESULTS */}
+
+      <div
+        className="
+          flex
+          items-center
+          justify-between
+          mb-5
+        "
+      >
+
+        <div>
+
+          <p className="text-lg font-semibold">
+            Mostrando {filteredData.length} resources
+          </p>
+
+          <p className="text-sm text-[var(--text-secondary)]">
+            Total Recursos: {data.length}
+          </p>
+
+        </div>
+
+      </div>
+
+      {/* METRICS */}
+
+      <MetricsCards
+        data={filteredData}
+      />
+
+      {/* FILTER CONTAINER */}
+
       <div
         className="
           mb-6
-          bg-[var(--bg-card)]/50
+          bg-[var(--bg-card)]/60
           border
           border-[var(--border)]
           rounded-3xl
-          p-5
+          p-6
           backdrop-blur-xl
         "
       >
 
-        <div className="flex flex-col lg:flex-row gap-4 mb-6">
+        {/* TOOLBAR */}
+
+        <div className="flex flex-col xl:flex-row gap-4 mb-6">
 
           <input
             type="text"
-            placeholder="Buscar recursos, IPs, tags, IDs..."
+            placeholder="Buscar recursos, IDs, IPs, tags..."
             value={search}
             onChange={(e) =>
               setSearch(e.target.value)
@@ -572,91 +724,213 @@ export default function Home() {
               bg-[var(--bg-dark)]
               border
               border-[var(--border)]
-              text-[var(--text-primary)]
-              placeholder-[var(--text-secondary)]
               outline-none
             "
           />
 
-          <button
-            onClick={() =>
-              exportCSV(
-                filteredData,
-                "inventory.csv"
-              )
-            }
-            className="
-              px-6
-              py-4
-              rounded-2xl
-              bg-[var(--primary)]
-              text-white
-              hover:opacity-90
-              transition-all
-              font-semibold
-            "
-          >
-            Export CSV
-          </button>
+          <div className="flex gap-3 flex-wrap">
 
-        </div>
-
-        <FilterSection
-          title="Cuentas"
-          values={accounts}
-          selected={selectedAccounts}
-          setSelected={setSelectedAccounts}
-        />
-
-        <FilterSection
-          title="Cliente"
-          values={clients}
-          selected={selectedClients}
-          setSelected={setSelectedClients}
-        />
-
-        <FilterSection
-          title="Proyecto"
-          values={projects}
-          selected={selectedProjects}
-          setSelected={setSelectedProjects}
-        />
-
-
-
-        <div className="mt-6">
-
-          <button
-            onClick={() =>
-              setOnlyWithoutTags(
-                !onlyWithoutTags
-              )
-            }
-            className={`
-              px-4
-              py-2
-              rounded-xl
-              text-sm
-              border
-              transition-all
-
-              ${
-                onlyWithoutTags
-                  ? "bg-red-500/20 text-red-400 border-red-500/20"
-                  : "bg-[var(--bg-hover)] border-[var(--border)]"
+            <button
+              onClick={() =>
+                setFiltersOpen(
+                  !filtersOpen
+                )
               }
-            `}
-          >
-            Sin Tags
-          </button>
+              className="
+                px-5
+                py-4
+                rounded-2xl
+                border
+                border-[var(--border)]
+                bg-[var(--bg-hover)]
+                flex
+                items-center
+                gap-2
+              "
+            >
+
+              <Filter size={16} />
+
+              Filtros
+
+              {filtersOpen
+
+                ? <ChevronUp size={16} />
+
+                : <ChevronDown size={16} />
+
+              }
+
+            </button>
+
+            <button
+              onClick={() =>
+                exportCSV(
+                  filteredData,
+                  "inventory.csv"
+                )
+              }
+              className="
+                px-6
+                py-4
+                rounded-2xl
+                bg-[var(--primary)]
+                text-white
+                font-semibold
+              "
+            >
+              Export CSV
+            </button>
+
+            <button
+              onClick={clearFilters}
+              className="
+                px-5
+                py-4
+                rounded-2xl
+                border
+                border-[var(--border)]
+                bg-[var(--bg-hover)]
+                flex
+                items-center
+                gap-2
+              "
+            >
+
+              <RotateCcw size={16} />
+
+              Clear
+
+            </button>
+
+          </div>
 
         </div>
+
+        {/* FILTERS */}
+
+        {filtersOpen && (
+
+          <div className="space-y-6">
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+              <FilterBlock
+                title="Infraestructura"
+                icon={<Cloud size={16} />}
+              >
+
+                <FilterSection
+                  title="Ubicación"
+                  values={providers}
+                  selected={selectedProviders}
+                  setSelected={setSelectedProviders}
+                />
+
+                <FilterSection
+                  title="Servicios"
+                  values={services}
+                  selected={selectedServices}
+                  setSelected={setSelectedServices}
+                />
+
+                <FilterSection
+                  title="Cuentas"
+                  values={accounts}
+                  selected={selectedAccounts}
+                  setSelected={setSelectedAccounts}
+                />
+
+              </FilterBlock>
+
+              <FilterBlock
+                title="Operación"
+                icon={<Database size={16} />}
+              >
+
+                <FilterSection
+                  title="Estado"
+                  values={statuses}
+                  selected={selectedStatuses}
+                  setSelected={setSelectedStatuses}
+                  coloredStatus
+                />
+
+              </FilterBlock>
+
+            </div>
+
+            <FilterBlock
+              title="Etiquetas"
+              icon={<Shield size={16} />}
+            >
+
+              <div className="space-y-6">
+
+                <FilterSection
+                  title="Cliente"
+                  values={clients}
+                  selected={selectedClients}
+                  setSelected={setSelectedClients}
+                />
+
+                <FilterSection
+                  title="Proyecto"
+                  values={projects}
+                  selected={selectedProjects}
+                  setSelected={setSelectedProjects}
+                />
+
+                <div>
+
+                  <p
+                    className="
+                      text-xs
+                      uppercase
+                      tracking-wider
+                      text-[var(--text-secondary)]
+                      mb-3
+                    "
+                  >
+                    Compliance
+                  </p>
+
+                  <button
+                    onClick={() =>
+                      setOnlyWithoutTags(
+                        !onlyWithoutTags
+                      )
+                    }
+                    className={`
+                      px-4
+                      py-2
+                      rounded-xl
+                      text-sm
+                      border
+
+                      ${
+                        onlyWithoutTags
+                          ? "bg-red-500/20 text-red-400 border-red-500/20"
+                          : "bg-[var(--bg-hover)] border-[var(--border)]"
+                      }
+                    `}
+                  >
+                    Recursos sin tags
+                  </button>
+
+                </div>
+
+              </div>
+
+            </FilterBlock>
+
+          </div>
+
+        )}
 
       </div>
 
-      <MetricsCards
-        data={filteredData}
-      />
+      {/* INVENTORY */}
 
       {mobileView ? (
 
@@ -677,8 +951,12 @@ export default function Home() {
 
       )}
 
+      {/* MODAL */}
+
       <ResourceModal
         item={selectedItem}
+        allItems={data}
+        onNavigate={setSelectedItem}
         onClose={() =>
           setSelectedItem(null)
         }
@@ -690,16 +968,132 @@ export default function Home() {
 
 }
 
+/* ───────────────────────────── */
+/* FILTER BLOCK */
+/* ───────────────────────────── */
+
+function FilterBlock({
+  title,
+  icon,
+  children
+}: any) {
+
+  const [open, setOpen] =
+    useState(true);
+
+  return (
+
+    <div
+      className="
+        rounded-3xl
+        border
+        border-[var(--border)]
+        bg-black/10
+        overflow-hidden
+      "
+    >
+
+      <button
+        onClick={() =>
+          setOpen(!open)
+        }
+        className="
+          w-full
+          p-5
+          flex
+          items-center
+          justify-between
+          hover:bg-[var(--bg-hover)]/30
+          transition-all
+        "
+      >
+
+        <div className="flex items-center gap-3">
+
+          <div
+            className="
+              w-10
+              h-10
+              rounded-xl
+              bg-[var(--primary)]/10
+              text-[var(--primary)]
+              flex
+              items-center
+              justify-center
+            "
+          >
+
+            {icon}
+
+          </div>
+
+          <div className="text-left">
+
+            <p className="font-semibold">
+              {title}
+            </p>
+
+            <p
+              className="
+                text-xs
+                text-[var(--text-secondary)]
+                mt-1
+              "
+            >
+              Click para expandir u ocultar
+            </p>
+
+          </div>
+
+        </div>
+
+        {open
+
+          ? <ChevronUp size={18} />
+
+          : <ChevronDown size={18} />
+
+        }
+
+      </button>
+
+      {open && (
+
+        <div
+          className="
+            px-5
+            pb-5
+            space-y-5
+          "
+        >
+
+          {children}
+
+        </div>
+
+      )}
+
+    </div>
+
+  );
+
+}
+
+/* ───────────────────────────── */
+/* FILTER SECTION */
+/* ───────────────────────────── */
+
 function FilterSection({
   title,
   values,
   selected,
-  setSelected
+  setSelected,
+  coloredStatus
 }: any) {
 
   return (
 
-    <div className="mb-5">
+    <div>
 
       <p
         className="
@@ -749,8 +1143,14 @@ function FilterSection({
 
                 ${
                   active
-                    ? "bg-[var(--primary)] text-white border-[var(--primary)]"
-                    : "bg-[var(--bg-hover)] border-[var(--border)]"
+
+                    ? "bg-[var(--primary)] border-[var(--primary)] text-white"
+
+                    : coloredStatus
+
+                      ? getStatusFilterStyle(value)
+
+                      : "bg-[var(--bg-hover)] border-[var(--border)]"
                 }
               `}
             >
@@ -769,37 +1169,48 @@ function FilterSection({
 
 }
 
-function LoadingCard({
-  icon,
-  text
-}: {
-  icon: React.ReactNode;
-  text: string;
-}) {
+function getStatusFilterStyle(
+  status: string
+) {
 
-  return (
+  const s =
+    status.toLowerCase();
 
-    <div
-      className="
-        px-5
-        py-4
-        rounded-2xl
-        border
-        border-[var(--border)]
-        bg-[var(--bg-card)]/50
-        backdrop-blur-xl
-        flex
-        items-center
-        gap-3
-      "
-    >
+  if (
+    [
+      "running",
+      "available",
+      "active",
+      "ok"
+    ].includes(s)
+  ) {
 
-      {icon}
+    return `
+      bg-green-500/10
+      border-green-500/20
+      text-green-400
+    `;
 
-      <span>{text}</span>
+  }
 
-    </div>
+  if (
+    [
+      "stopped",
+      "terminated"
+    ].includes(s)
+  ) {
 
-  );
+    return `
+      bg-red-500/10
+      border-red-500/20
+      text-red-400
+    `;
+
+  }
+
+  return `
+    bg-[var(--bg-hover)]
+    border-[var(--border)]
+  `;
 
 }

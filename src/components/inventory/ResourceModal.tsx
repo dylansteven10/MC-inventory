@@ -23,8 +23,17 @@ import TagsList from "./TagsList";
 import SecurityGroupList from "./SecurityGroupList";
 
 type Props = {
+
   item: InventoryItem | null;
+
+  allItems: InventoryItem[];
+
+  onNavigate: (
+    item: InventoryItem
+  ) => void;
+
   onClose: () => void;
+
 };
 
 type Tab =
@@ -34,14 +43,38 @@ type Tab =
   | "loadbalancer";
 
 export default function ResourceModal({
+
   item,
+  allItems,
+  onNavigate,
   onClose
+
 }: Props) {
 
   const [tab, setTab] =
     useState<Tab>("overview");
 
   if (!item) return null;
+
+  const findResource = (
+    id?: string
+  ) => {
+
+    if (!id) return null;
+
+    return allItems.find(
+
+      (r) =>
+
+        r.id === id ||
+
+        r.name === id ||
+
+        r.host === id
+
+    );
+
+  };
 
   const securityAnalysis =
     useMemo(() => {
@@ -135,25 +168,25 @@ export default function ResourceModal({
           rounded-3xl
           w-full
           max-w-7xl
-          max-h-[92vh]
-          overflow-hidden
+          flex
+          flex-col
           shadow-2xl
         "
+        style={{ maxHeight: "92vh" }}
       >
 
-        {/* HEADER */}
+        {/* HEADER — sticky dentro del flex */}
 
         <div
           className="
-            sticky
-            top-0
-            z-20
+            flex-shrink-0
             bg-[var(--bg-card)]/95
             backdrop-blur-xl
             border-b
             border-[var(--border)]
             px-6
             py-5
+            rounded-t-3xl
           "
         >
 
@@ -279,9 +312,16 @@ export default function ResourceModal({
 
         </div>
 
-        {/* BODY */}
+        {/* BODY — flex-1 + overflow-auto: ocupa todo el espacio restante y scrollea */}
 
-        <div className="p-6 overflow-auto max-h-[75vh]">
+        <div
+          className="
+            flex-1
+            overflow-y-auto
+            p-6
+            min-h-0
+          "
+        >
 
           {/* EXPOSURE */}
 
@@ -483,50 +523,76 @@ export default function ResourceModal({
                     type={item.topologyType}
                   />
 
-                  {(item.relationships || []).map((rel, index) => (
+                  {(item.relationships || []).map((rel, index) => {
 
-                    <div
-                      key={index}
-                      className="ml-6"
-                    >
+                    const related =
+                      findResource(rel.targetId);
 
-                      <div className="flex items-center gap-3 mb-2">
+                    return (
 
-                        <ArrowDown
-                          size={16}
-                          className="text-[var(--text-secondary)]"
+                      <div
+                        key={index}
+                        className="ml-6"
+                      >
+
+                        <div className="flex items-center gap-3 mb-2">
+
+                          <ArrowDown
+                            size={16}
+                            className="text-[var(--text-secondary)]"
+                          />
+
+                          <span
+                            className="
+                              text-xs
+                              uppercase
+                              tracking-wide
+                              text-[var(--text-secondary)]
+                            "
+                          >
+                            {rel.type.replaceAll("_", " ")}
+                          </span>
+
+                        </div>
+
+                        <TopologyNode
+
+                          clickable={!!related}
+
+                          onClick={() => {
+
+                            if (related) {
+
+                              onNavigate(related);
+
+                            }
+
+                          }}
+
+                          icon={
+
+                            rel.targetService === "VPC"
+
+                              ? <Network size={18} />
+
+                              : rel.targetService === "Subnet"
+
+                                ? <Boxes size={18} />
+
+                                : <Server size={18} />
+
+                          }
+
+                          label={`${rel.targetService} · ${rel.targetName}`}
+
+                          type="related"
                         />
-
-                        <span
-                          className="
-                            text-xs
-                            uppercase
-                            tracking-wide
-                            text-[var(--text-secondary)]
-                          "
-                        >
-                          {rel.type.replaceAll("_", " ")}
-                        </span>
 
                       </div>
 
-                      <TopologyNode
-                        icon={
+                    );
 
-                          rel.targetService === "VPC"
-
-                            ? <Network size={18} />
-
-                            : <Server size={18} />
-
-                        }
-                        label={`${rel.targetService} · ${rel.targetName}`}
-                        type="related"
-                      />
-
-                    </div>
-
-                  ))}
+                  })}
 
                 </div>
 
@@ -725,39 +791,64 @@ export default function ResourceModal({
 
                         <div className="p-5 space-y-3">
 
-                          {(tg.targets || []).map((target, i) => (
+                          {(tg.targets || []).map((target, i) => {
 
-                            <div
-                              key={i}
-                              className="
-                                flex
-                                items-center
-                                justify-between
-                                p-4
-                                rounded-xl
-                                bg-black/20
-                              "
-                            >
+                            const related =
+                              findResource(target.id);
 
-                              <div>
+                            return (
 
-                                <p className="font-mono">
-                                  {target.id}
-                                </p>
+                              <button
+                                key={i}
 
-                                <p className="text-xs text-gray-400 mt-1">
-                                  Port {target.port}
-                                </p>
+                                onClick={() => {
 
-                              </div>
+                                  if (related) {
 
-                              <HealthBadge
-                                status={target.health}
-                              />
+                                    onNavigate(related);
 
-                            </div>
+                                  }
 
-                          ))}
+                                }}
+
+                                className="
+                                  w-full
+                                  flex
+                                  items-center
+                                  justify-between
+                                  p-4
+                                  rounded-xl
+                                  bg-black/20
+                                  hover:bg-[var(--bg-hover)]
+                                  transition-all
+                                  border
+                                  border-transparent
+                                  hover:border-cyan-400
+                                  text-left
+                                "
+                              >
+
+                                <div>
+
+                                  <p className="font-mono">
+                                    {target.id}
+                                  </p>
+
+                                  <p className="text-xs text-gray-400 mt-1">
+                                    Port {target.port}
+                                  </p>
+
+                                </div>
+
+                                <HealthBadge
+                                  status={target.health}
+                                />
+
+                              </button>
+
+                            );
+
+                          })}
 
                         </div>
 
@@ -1018,7 +1109,9 @@ function TopologyNode({
 
   icon,
   label,
-  type
+  type,
+  clickable,
+  onClick
 
 }: {
 
@@ -1028,18 +1121,40 @@ function TopologyNode({
 
   type?: string;
 
+  clickable?: boolean;
+
+  onClick?: () => void;
+
 }) {
 
   return (
 
-    <div
+    <button
+      onClick={onClick}
+      disabled={!clickable}
       className={`
+        w-full
         flex
         items-center
         gap-4
         p-4
         rounded-2xl
         border
+        text-left
+        transition-all
+
+        ${
+          clickable
+
+            ? `
+              hover:scale-[1.01]
+              hover:border-cyan-400
+              hover:shadow-lg
+              cursor-pointer
+            `
+
+            : ""
+        }
 
         ${getTopologyStyles(type)}
       `}
@@ -1051,7 +1166,7 @@ function TopologyNode({
 
       </div>
 
-      <div>
+      <div className="flex-1">
 
         <p className="font-medium">
           {label}
@@ -1059,7 +1174,21 @@ function TopologyNode({
 
       </div>
 
-    </div>
+      {clickable && (
+
+        <div
+          className="
+            text-xs
+            text-cyan-400
+            font-semibold
+          "
+        >
+          OPEN
+        </div>
+
+      )}
+
+    </button>
 
   );
 

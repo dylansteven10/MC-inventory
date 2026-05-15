@@ -1,4 +1,11 @@
-// src/components/inventory/MetricsCards.tsx
+import {
+  Shield,
+  Cloud,
+  Server,
+  Globe,
+  Boxes,
+  AlertTriangle
+} from "lucide-react";
 
 import { InventoryItem } from "@/types/inventory";
 
@@ -27,57 +34,74 @@ export default function MetricsCards({
 
     ).length;
 
-  const stopped =
-    total - running;
-
-  const noTags =
+  const exposed =
     data.filter(
-
-      (i) =>
-        !i.tags ||
-        Object.keys(i.tags).length === 0
-
+      (i) => i.publiclyExposed
     ).length;
 
-  const withSG =
-    data.filter(
+  const providers =
+    new Set(
+      data.map((i) => i.provider)
+    ).size;
 
-      (i) =>
-        i.securityGroups &&
-        i.securityGroups.length > 0
+  const services =
+    new Set(
+      data.map((i) => i.service)
+    ).size;
 
-    ).length;
+  const accounts =
+    new Set(
+      data.map((i) => i.accountName)
+    ).size;
 
   const metrics = [
 
     {
-      label: "Total",
+      label: "Total Recursos",
       value: total,
+      subtitle: "Filtrados",
+      icon: <Boxes size={22} />,
       color: "var(--primary)"
+    },
+
+    {
+      label: "Providers",
+      value: providers,
+      subtitle: "Clouds",
+      icon: <Cloud size={22} />,
+      color: "var(--info)"
+    },
+
+    {
+      label: "Servicios",
+      value: services,
+      subtitle: "Únicos",
+      icon: <Server size={22} />,
+      color: "var(--warning)"
     },
 
     {
       label: "Running",
       value: running,
+      subtitle: "Operativos",
+      icon: <Shield size={22} />,
       color: "var(--success)"
     },
 
     {
-      label: "Stopped",
-      value: stopped,
+      label: "Expuestos",
+      value: exposed,
+      subtitle: "Públicos",
+      icon: <Globe size={22} />,
       color: "var(--error)"
     },
 
     {
-      label: "Con SG",
-      value: withSG,
-      color: "var(--warning)"
-    },
-
-    {
-      label: "Sin tags",
-      value: noTags,
-      color: "var(--info)"
+      label: "Cuentas",
+      value: accounts,
+      subtitle: "Detectadas",
+      icon: <AlertTriangle size={22} />,
+      color: "var(--secondary)"
     }
 
   ];
@@ -88,7 +112,7 @@ export default function MetricsCards({
       className="
         grid
         grid-cols-2
-        xl:grid-cols-5
+        xl:grid-cols-6
         gap-4
         mb-8
       "
@@ -124,28 +148,59 @@ export default function MetricsCards({
 
           <div className="relative z-10">
 
-            <p
-              className="
-                text-xs
-                uppercase
-                tracking-wider
-                text-[var(--text-secondary)]
-                mb-2
-              "
-            >
-              {metric.label}
-            </p>
+            <div className="flex items-start justify-between mb-5">
 
-            <p
-              className="
-                text-4xl
-                font-bold
-              "
-              style={{
-                color: metric.color
-              }}
-            >
-              {metric.value}
+              <div>
+
+                <p
+                  className="
+                    text-xs
+                    uppercase
+                    tracking-wider
+                    text-[var(--text-secondary)]
+                    mb-2
+                  "
+                >
+                  {metric.label}
+                </p>
+
+                <p
+                  className="
+                    text-4xl
+                    font-bold
+                  "
+                  style={{
+                    color: metric.color
+                  }}
+                >
+                  {metric.value}
+                </p>
+
+              </div>
+
+              <div
+                className="
+                  w-11
+                  h-11
+                  rounded-2xl
+                  flex
+                  items-center
+                  justify-center
+                "
+                style={{
+                  background:
+                    `${metric.color}20`,
+                  color:
+                    metric.color
+                }}
+              >
+                {metric.icon}
+              </div>
+
+            </div>
+
+            <p className="text-sm text-[var(--text-secondary)]">
+              {metric.subtitle}
             </p>
 
           </div>

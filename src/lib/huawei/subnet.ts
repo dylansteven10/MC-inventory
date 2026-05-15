@@ -110,7 +110,7 @@ export async function getHuaweiSubnetInventory() {
                   subnet.cidr || "N/A",
 
                 status:
-                  subnet.status || "UNKNOWN",
+                  subnet.status === "ACTIVE" ? "available" : subnet.status || "UNKNOWN",
 
                 operatingSystem:
                   "N/A",

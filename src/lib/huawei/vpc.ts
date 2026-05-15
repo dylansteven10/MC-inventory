@@ -110,7 +110,7 @@ export async function getHuaweiVPCInventory() {
                   vpc.cidr || "N/A",
 
                 status:
-                  vpc.status || "UNKNOWN",
+                  "available",
 
                 operatingSystem:
                   "N/A",

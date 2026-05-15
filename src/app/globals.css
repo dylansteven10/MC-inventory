@@ -279,3 +279,17 @@ tbody tr:hover {
       var(--secondary)
     );
 }
+
+/* LIGHT MODE */
+
+[data-mode="light"] {
+
+  --bg-dark: #f4f7fb;
+  --bg-card: #ffffff;
+  --bg-hover: #edf2f7;
+  --border: #dbe4ee;
+
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+
+}

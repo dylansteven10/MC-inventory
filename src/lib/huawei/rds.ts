@@ -107,7 +107,7 @@ export async function getHuaweiRDSInventory() {
                   db.private_ips?.[0] || "N/A",
 
                 status:
-                  db.status || "UNKNOWN",
+                  db.status === "ACTIVE" ? "running" : db.status === "SHUTOFF" ? "stopped" : db.status === "SHUTDOWN" ? "stopped" : db.status || "UNKNOWN",
 
                 operatingSystem:
                   `${db.datastore?.type || "RDS"} ${db.datastore?.version || ""}`,
