@@ -26,52 +26,243 @@ import {
   enrichRelationships
 } from "@/lib/inventory/enrichRelationships";
 
+import {
+
+  readInventoryCache,
+  writeInventoryCache
+
+} from "@/lib/inventory/cache";
+
+export const dynamic =
+  "force-dynamic";
+
+const CACHE_TTL =
+  100 * 60 * 10;
+
+/* ───────────────────────────── */
+/* GLOBAL REFRESH LOCK */
+/* ───────────────────────────── */
+
+let refreshing =
+  false;
+
+let lastRefresh =
+  0;
+
+/* ───────────────────────────── */
+/* BUILD INVENTORY */
+/* ───────────────────────────── */
+
+async function buildInventory() {
+
+  console.time(
+    "inventory-build"
+  );
+
+  const [
+
+    awsInventory,
+
+    huaweiECS,
+    huaweiRDS,
+    huaweiVPC,
+    huaweiSubnet,
+    huaweiOBS
+
+  ] = await Promise.all([
+
+    getAWSInventory(),
+
+    getHuaweiECSInventory(),
+    getHuaweiRDSInventory(),
+    getHuaweiVPCInventory(),
+    getHuaweiSubnetInventory(),
+    getHuaweiOBSInventory()
+
+  ]);
+
+  const allInventory = [
+
+    ...awsInventory,
+
+    ...huaweiECS,
+    ...huaweiRDS,
+    ...huaweiVPC,
+    ...huaweiSubnet,
+    ...huaweiOBS
+
+  ];
+
+  const enriched =
+    enrichRelationships(
+      allInventory
+    );
+
+  console.timeEnd(
+    "inventory-build"
+  );
+
+  return enriched;
+
+}
+
+/* ───────────────────────────── */
+/* BACKGROUND REFRESH */
+/* ───────────────────────────── */
+
+async function refreshInventory() {
+
+  try {
+
+    console.log(
+      "BACKGROUND REFRESH START"
+    );
+
+    const inventory =
+      await buildInventory();
+
+    writeInventoryCache({
+
+      timestamp:
+        Date.now(),
+
+      data:
+        inventory
+
+    });
+
+    lastRefresh =
+      Date.now();
+
+    console.log(
+      "BACKGROUND REFRESH DONE"
+    );
+
+  } catch (err) {
+
+    console.error(
+      "BACKGROUND REFRESH ERROR:",
+      err
+    );
+
+  }
+
+}
+
+/* ───────────────────────────── */
+/* API */
+/* ───────────────────────────── */
+
 export async function GET() {
 
   try {
 
-    const awsInventory =
-      await getAWSInventory();
+    const cached =
+      readInventoryCache();
 
-    const huaweiECS =
-      await getHuaweiECSInventory();
+    /* ───────────────────────── */
+    /* CACHE EXISTS */
+    /* ───────────────────────── */
 
-    const huaweiRDS =
-      await getHuaweiRDSInventory();
+    if (cached) {
 
-    const huaweiVPC =
-      await getHuaweiVPCInventory();
+      const age =
+        Date.now() -
+        cached.timestamp;
 
-    const huaweiSubnet =
-      await getHuaweiSubnetInventory();
-
-    const huaweiOBS =
-      await getHuaweiOBSInventory();
-
-    const allInventory = [
-
-      ...awsInventory,
-
-      ...huaweiECS,
-      ...huaweiRDS,
-      ...huaweiVPC,
-      ...huaweiSubnet,
-      ...huaweiOBS
-
-    ];
-
-    const enriched =
-      enrichRelationships(
-        allInventory
+      console.log(
+        `CACHE AGE: ${Math.floor(age / 1000)}s`
       );
 
-    return NextResponse.json(
-      enriched
+      /* ─────────────────────── */
+      /* AUTO REFRESH BG */
+      /* ─────────────────────── */
+
+      const shouldRefresh =
+
+        age > CACHE_TTL &&
+
+        !refreshing;
+
+      if (shouldRefresh) {
+
+        refreshing = true;
+
+        refreshInventory()
+          .finally(() => {
+
+            refreshing = false;
+
+          });
+
+      }
+
+      return NextResponse.json({
+
+        source:
+          "cache",
+
+        timestamp:
+          cached.timestamp,
+
+        refreshing,
+
+        data:
+          cached.data
+
+      });
+
+    }
+
+    /* ───────────────────────── */
+    /* FIRST LOAD */
+    /* ───────────────────────── */
+
+    console.log(
+      "NO CACHE FOUND"
     );
+
+    refreshing = true;
+
+    const inventory =
+      await buildInventory();
+
+    writeInventoryCache({
+
+      timestamp:
+        Date.now(),
+
+      data:
+        inventory
+
+    });
+
+    refreshing = false;
+
+    return NextResponse.json({
+
+      source:
+        "fresh",
+
+      timestamp:
+        Date.now(),
+
+      refreshing:
+        false,
+
+      data:
+        inventory
+
+    });
 
   } catch (error) {
 
-    console.error(error);
+    refreshing = false;
+
+    console.error(
+      "INVENTORY ERROR:",
+      error
+    );
 
     return NextResponse.json(
 

@@ -1,43 +1,29 @@
 import {
-
   getAWSAccounts
-
 } from "./accounts";
 
 import {
-
   getAWSEC2Inventory
-
 } from "./ec2";
 
 import {
-
   getAWSRDSInventory
-
 } from "./rds";
 
 import {
-
   getAWSS3Inventory
-
 } from "./s3";
 
 import {
-
   getAWSVPCInventory
-
 } from "./vpc";
 
 import {
-
   getAWSSubnetInventory
-
 } from "./subnet";
 
 import {
-
   getAWSELBInventory
-
 } from "./elb";
 
 export async function getAWSInventory() {
@@ -45,41 +31,61 @@ export async function getAWSInventory() {
   const accounts =
     getAWSAccounts();
 
-  const inventory: any[] = [];
+  console.log(
+    `AWS ACCOUNTS: ${accounts.length}`
+  );
 
-  for (const account of accounts) {
+  const accountResults =
+    await Promise.all(
 
-    const ec2 =
-      await getAWSEC2Inventory(account);
+      accounts.map(
+        async (account) => {
 
-    const rds =
-      await getAWSRDSInventory(account);
+          console.log(
+            `Loading AWS account: ${account.name}`
+          );
 
-    const s3 =
-      await getAWSS3Inventory(account);
+          const [
 
-    const vpc =
-      await getAWSVPCInventory(account);
+            ec2,
+            rds,
+            s3,
+            vpc,
+            subnet,
+            elb
 
-    const subnet =
-      await getAWSSubnetInventory(account);
+          ] = await Promise.all([
 
-    const elb =
-      await getAWSELBInventory(account);
+            getAWSEC2Inventory(account),
 
-    inventory.push(
+            getAWSRDSInventory(account),
 
-      ...ec2,
-      ...rds,
-      ...s3,
-      ...vpc,
-      ...subnet,
-      ...elb
+            getAWSS3Inventory(account),
+
+            getAWSVPCInventory(account),
+
+            getAWSSubnetInventory(account),
+
+            getAWSELBInventory(account)
+
+          ]);
+
+          return [
+
+            ...ec2,
+            ...rds,
+            ...s3,
+            ...vpc,
+            ...subnet,
+            ...elb
+
+          ];
+
+        }
+      )
 
     );
 
-  }
-
-  return inventory;
+  return accountResults.flat();
 
 }

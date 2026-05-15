@@ -21,6 +21,9 @@ import type {
 const region =
   process.env.AWS_REGION || "us-east-1";
 
+const ENABLE_RDS_TAGS =
+  process.env.ENABLE_RDS_TAGS === "true";
+
 export async function getAWSRDSInventory(
 
   account: AWSAccount
@@ -70,24 +73,16 @@ export async function getAWSRDSInventory(
             const arn =
               db.DBInstanceArn;
 
-            if (arn) {
+            if (arn && ENABLE_RDS_TAGS) {
 
-              const tagData =
-                await client.send(
+            /*
+              RDS tags son MUY lentos.
 
-                  new ListTagsForResourceCommand({
+              Si quieres máximo performance:
+              desactiva tags temporalmente.
+            */
 
-                    ResourceName:
-                      arn
-
-                  })
-
-                );
-
-              tags =
-                formatAwsTags(
-                  tagData.TagList || []
-                );
+            tags = {};
 
             }
 

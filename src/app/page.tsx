@@ -87,21 +87,64 @@ export default function Home() {
   /* FETCH */
   /* ───────────────────────────── */
 
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [lastUpdate, setLastUpdate] =
+    useState<string>("");
+
   useEffect(() => {
 
-    const load = async () => {
+    let mounted = true;
+
+    const load = async (
+      initial = false
+    ) => {
 
       try {
 
-        setLoading(true);
+        if (initial) {
+
+          setLoading(true);
+
+        } else {
+
+          setRefreshing(true);
+
+        }
 
         const response =
-          await fetch("/api/inventory");
+          await fetch(
+            "/api/inventory",
+            {
+              cache: "no-store"
+            }
+          );
 
         const json =
           await response.json();
 
-        setData(json);
+        if (!mounted) return;
+
+        setData(json.data);
+
+        setLastUpdate(
+
+          new Date(
+            json.timestamp
+          ).toLocaleTimeString()
+
+        );
+
+        console.log(
+          "Inventory source:",
+          json.source
+        );
+
+        console.log(
+          "Refreshing:",
+          json.refreshing
+        );
 
       } catch (error) {
 
@@ -112,13 +155,35 @@ export default function Home() {
 
       } finally {
 
+        if (!mounted) return;
+
         setLoading(false);
+
+        setRefreshing(false);
 
       }
 
     };
 
-    load();
+    /* FIRST LOAD */
+
+    load(true);
+
+    /* AUTO REFRESH */
+
+    const interval = setInterval(() => {
+
+      load(false);
+
+    }, 30000);
+
+    return () => {
+
+      mounted = false;
+
+      clearInterval(interval);
+
+    };
 
   }, []);
 
@@ -654,7 +719,52 @@ export default function Home() {
 
           </div>
 
-          <UserMenu />
+          <div className="flex items-center gap-4">
+
+            <div className="text-right">
+
+              <p
+                className="
+                  text-xs
+                  text-[var(--text-secondary)]
+                "
+              >
+                Última actualización
+              </p>
+
+              <div className="flex items-center gap-2 justify-end">
+
+                <p className="text-sm font-medium">
+                  {lastUpdate || "--"}
+                </p>
+
+                {refreshing && (
+
+                  <div
+                    className="
+                      px-2
+                      py-1
+                      rounded-full
+                      text-[10px]
+                      bg-[var(--primary)]/10
+                      border
+                      border-[var(--primary)]/20
+                      text-[var(--primary)]
+                      animate-pulse
+                    "
+                  >
+                    Actualizando...
+                  </div>
+
+                )}
+
+              </div>
+
+            </div>
+
+            <UserMenu />
+
+          </div>
 
         </div>
 
