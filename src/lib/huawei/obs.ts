@@ -34,63 +34,138 @@ export async function getHuaweiOBSInventory() {
             await obsClient.listBuckets();
 
           console.log(
+
             `HUAWEI OBS STATUS (${account.name}):`,
+
             result.CommonMsg.Status
+
           );
 
           const buckets =
             result.InterfaceResult?.Buckets || [];
 
           console.log(
+
             `HUAWEI OBS COUNT (${account.name}):`,
+
             buckets.length
+
           );
 
-          return buckets.map((bucket: any) => {
+          return await Promise.all(
 
-            const bucketName =
-              bucket.BucketName ||
-              bucket.Name ||
-              bucket.name ||
-              "unknown-bucket";
+            buckets.map(async (bucket: any) => {
 
-            return {
+              const bucketName =
 
-              uniqueKey:
-                `HUAWEI-${account.projectId}-OBS-${bucketName}`,
+                bucket.BucketName ||
 
-              provider:
-                "HUAWEI CLOUD",
+                bucket.Name ||
 
-              accountName:
-                account.name,
+                bucket.name ||
 
-              accountId:
-                account.projectId,
+                "unknown-bucket";
 
-              service:
-                "OBS",
+              /* ───────────────────────────── */
+              /* TAGS */
+              /* ───────────────────────────── */
 
-              name:
-                bucketName,
+              let tags:
+                Record<string, string> = {};
 
-              id:
-                bucketName,
+              try {
 
-              host:
-                "N/A",
+                const tagResult =
+                  await obsClient.getBucketTagging({
 
-              status:
-                "available",
+                    Bucket:
+                      bucketName
 
-              operatingSystem:
-                "N/A",
+                  });
 
-              tags: {}
 
-            };
+                const tagSet =
 
-          });
+                  tagResult
+                    ?.InterfaceResult
+                    ?.Tags ||
+
+                  tagResult
+                    ?.InterfaceResult
+                    ?.Tagging
+                    ?.TagSet ||
+
+                  tagResult
+                    ?.InterfaceResult
+                    ?.TagSet ||
+
+                  [];
+
+                for (const tag of tagSet) {
+
+                  if (
+                    tag.Key &&
+                    tag.Value
+                  ) {
+
+                    tags[tag.Key] =
+                      tag.Value;
+
+                  }
+
+                }
+
+              } catch (err) {
+
+                console.error(
+
+                  `OBS TAG ERROR (${bucketName}):`,
+
+                  err
+
+                );
+
+              }
+
+              return {
+
+                uniqueKey:
+                  `HUAWEI-${account.projectId}-OBS-${bucketName}`,
+
+                provider:
+                  "HUAWEI CLOUD",
+
+                accountName:
+                  account.name,
+
+                accountId:
+                  account.projectId,
+
+                service:
+                  "OBS",
+
+                name:
+                  bucketName,
+
+                id:
+                  bucketName,
+
+                host:
+                  "N/A",
+
+                status:
+                  "available",
+
+                operatingSystem:
+                  "N/A",
+
+                tags
+
+              };
+
+            })
+
+          );
 
         })
 
