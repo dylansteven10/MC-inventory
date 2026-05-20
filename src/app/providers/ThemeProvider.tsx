@@ -178,7 +178,28 @@ export function ThemeProvider({
 
   if (!mounted) {
 
-    return <>{children}</>;
+    return (
+
+      <ThemeContext.Provider
+        value={{
+
+          theme,
+          setTheme,
+
+          appearance,
+          setAppearance,
+
+          themeName:
+            themeLabels[theme],
+
+        }}
+      >
+
+        {children}
+
+      </ThemeContext.Provider>
+
+    );
 
   }
 

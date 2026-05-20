@@ -10,6 +10,10 @@ import {
   getHuaweiTags
 } from "./tags";
 
+import {
+  getHuaweiSecurityGroupRules
+} from "./security-groups";
+
 export async function getHuaweiECSInventory() {
 
   try {
@@ -22,8 +26,12 @@ export async function getHuaweiECSInventory() {
 
         accounts.map(async (account) => {
 
-          const data =
-            await huaweiRequest({
+          const [
+            data,
+            allRules
+          ] = await Promise.all([
+
+            huaweiRequest({
 
               method: "GET",
 
@@ -42,7 +50,22 @@ export async function getHuaweiECSInventory() {
               projectId:
                 account.projectId
 
-            });
+            }),
+
+            getHuaweiSecurityGroupRules({
+
+              ak:
+                account.ak,
+
+              sk:
+                account.sk,
+
+              projectId:
+                account.projectId
+
+            })
+
+          ]);
 
           if (!data) {
 
@@ -101,6 +124,89 @@ export async function getHuaweiECSInventory() {
 
                 });
 
+              const securityGroups =
+
+                (server.security_groups || []).map((sg: any) => {
+
+                  const rules =
+                    allRules.filter(
+
+                      (rule: any) =>
+
+                        rule.security_group_id === sg.id
+
+                    );
+
+                  return {
+
+                    id:
+                      sg.id || "N/A",
+
+                    name:
+                      sg.name || "N/A",
+
+                    inboundRules:
+
+                      rules
+
+                        .filter(
+                          (rule: any) =>
+
+                            rule.direction === "ingress"
+                        )
+
+                        .map((rule: any) => ({
+
+                          protocol:
+                            rule.protocol || "ALL",
+
+                          fromPort:
+                            rule.port_range_min,
+
+                          toPort:
+                            rule.port_range_max,
+
+                          cidr:
+                            rule.remote_ip_prefix || "0.0.0.0/0",
+
+                          direction:
+                            "inbound"
+
+                        })),
+
+                    outboundRules:
+
+                      rules
+
+                        .filter(
+                          (rule: any) =>
+
+                            rule.direction === "egress"
+                        )
+
+                        .map((rule: any) => ({
+
+                          protocol:
+                            rule.protocol || "ALL",
+
+                          fromPort:
+                            rule.port_range_min,
+
+                          toPort:
+                            rule.port_range_max,
+
+                          cidr:
+                            rule.remote_ip_prefix || "0.0.0.0/0",
+
+                          direction:
+                            "outbound"
+
+                        }))
+
+                  };
+
+                });
+
               return {
 
                 uniqueKey:
@@ -128,22 +234,17 @@ export async function getHuaweiECSInventory() {
                   hostIp,
 
                 status:
-                  server.status === "ACTIVE" ? "running" : server.status === "SHUTOFF" ? "stopped" : server.status || "UNKNOWN",
+
+                  server.status === "ACTIVE"
+                    ? "running"
+                    : server.status === "SHUTOFF"
+                    ? "stopped"
+                    : server.status || "UNKNOWN",
 
                 operatingSystem:
                   "Linux",
 
-                securityGroups:
-
-                  (server.security_groups || []).map((sg: any) => ({
-
-                    id:
-                      sg.id || "N/A",
-
-                    name:
-                      sg.name || "N/A"
-
-                  })),
+                securityGroups,
 
                 tags
 

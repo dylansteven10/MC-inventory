@@ -22,7 +22,6 @@ import InventoryTable from "@/components/inventory/InventoryTable";
 import InventoryCards from "@/components/inventory/InventoryCards";
 import MetricsCards from "@/components/inventory/MetricsCards";
 import ResourceModal from "@/components/inventory/ResourceModal";
-import UserMenu from "@/components/layout/UserMenu";
 import ScrollToTop from "@/components/ui/ScrollToTop";
 
 import {
@@ -682,88 +681,37 @@ export default function Home() {
 
       <div className="mb-8">
 
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
 
-          <div className="flex items-center gap-4">
-
-            <div
-              className="
-                w-12
-                h-12
-                rounded-xl
-                flex
-                items-center
-                justify-center
-                text-white
-                text-xl
-                font-bold
-              "
-              style={{
-                background:
-                  "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))"
-              }}
-            >
-              MC
-            </div>
-
-            <div>
-
-              <h1 className="text-3xl font-bold">
-                MC Inventory
-              </h1>
-
-              <p className="text-[var(--text-secondary)]">
-                Inventario Cloud Centralizado
-              </p>
-
-            </div>
-
+          <div
+            className="
+              w-12
+              h-12
+              rounded-xl
+              flex
+              items-center
+              justify-center
+              text-white
+              text-xl
+              font-bold
+            "
+            style={{
+              background:
+                "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))"
+            }}
+          >
+            MC
           </div>
 
-          <div className="flex items-center gap-4">
+          <div>
 
-            <div className="text-right">
+            <h1 className="text-3xl font-bold">
+              Dashboard
+            </h1>
 
-              <p
-                className="
-                  text-xs
-                  text-[var(--text-secondary)]
-                "
-              >
-                Última actualización
-              </p>
-
-              <div className="flex items-center gap-2 justify-end">
-
-                <p className="text-sm font-medium">
-                  {lastUpdate || "--"}
-                </p>
-
-                {refreshing && (
-
-                  <div
-                    className="
-                      px-2
-                      py-1
-                      rounded-full
-                      text-[10px]
-                      bg-[var(--primary)]/10
-                      border
-                      border-[var(--primary)]/20
-                      text-[var(--primary)]
-                      animate-pulse
-                    "
-                  >
-                    Actualizando...
-                  </div>
-
-                )}
-
-              </div>
-
-            </div>
-
-            <UserMenu />
+            <p className="text-[var(--text-secondary)]">
+              Inventario Cloud Centralizado
+            </p>
 
           </div>
 

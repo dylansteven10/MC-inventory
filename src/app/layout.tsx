@@ -1,13 +1,20 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import type {
+  Metadata
+} from "next";
+
 import "./globals.css";
+
 import ClientLayout from "./ClientLayout";
 
-const inter = Inter({ subsets: ["latin"] });
+import Providers from "./providers/Providers";
 
 export const metadata: Metadata = {
+
   title: "MC Inventory",
-  description: "Multi-cloud inventory management",
+
+  description:
+    "Multi Cloud Inventory Platform"
+
 };
 
 export default function RootLayout({
@@ -15,13 +22,25 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+
   return (
-    <html lang="es">
-      <body className={inter.className}>
-        <ClientLayout>
-          {children}
-        </ClientLayout>
+
+    <html lang="en">
+
+      <body>
+
+        <Providers>
+
+          <ClientLayout>
+            {children}
+          </ClientLayout>
+
+        </Providers>
+
       </body>
+
     </html>
+
   );
+
 }

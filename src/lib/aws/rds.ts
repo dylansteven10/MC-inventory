@@ -7,15 +7,11 @@ import {
 } from "@aws-sdk/client-rds";
 
 import {
-
   formatAwsTags
-
 } from "./tags";
 
 import type {
-
   AWSAccount
-
 } from "./accounts";
 
 const region =
@@ -66,27 +62,53 @@ export async function getAWSRDSInventory(
           const id =
             db.DBInstanceIdentifier || "";
 
-          let tags: Record<string, string> = {};
+          let tags:
+            Record<string, string> = {};
+
+          /* ───────────────────────────── */
+          /* TAGS */
+          /* ───────────────────────────── */
 
           try {
 
             const arn =
               db.DBInstanceArn;
 
-            if (arn && ENABLE_RDS_TAGS) {
+            if (
+              arn &&
+              ENABLE_RDS_TAGS
+            ) {
 
-            /*
-              RDS tags son MUY lentos.
+              const tagData =
+                await client.send(
 
-              Si quieres máximo performance:
-              desactiva tags temporalmente.
-            */
+                  new ListTagsForResourceCommand({
 
-            tags = {};
+                    ResourceName:
+                      arn
+
+                  })
+
+                );
+
+              tags =
+                formatAwsTags(
+
+                  tagData.TagList || []
+
+                );
 
             }
 
-          } catch {
+          } catch (err) {
+
+            console.error(
+
+              `RDS TAG ERROR (${id}):`,
+
+              err
+
+            );
 
             tags = {};
 

@@ -23,6 +23,10 @@ import {
 } from "@/lib/huawei/obs";
 
 import {
+  getHuaweiELBInventory
+} from "@/lib/huawei/elb";
+
+import {
   enrichRelationships
 } from "@/lib/inventory/enrichRelationships";
 
@@ -67,7 +71,8 @@ async function buildInventory() {
     huaweiRDS,
     huaweiVPC,
     huaweiSubnet,
-    huaweiOBS
+    huaweiOBS,
+    huaweiELB
 
   ] = await Promise.all([
 
@@ -77,7 +82,8 @@ async function buildInventory() {
     getHuaweiRDSInventory(),
     getHuaweiVPCInventory(),
     getHuaweiSubnetInventory(),
-    getHuaweiOBSInventory()
+    getHuaweiOBSInventory(),
+    getHuaweiELBInventory()
 
   ]);
 
@@ -89,7 +95,8 @@ async function buildInventory() {
     ...huaweiRDS,
     ...huaweiVPC,
     ...huaweiSubnet,
-    ...huaweiOBS
+    ...huaweiOBS,
+    ...huaweiELB
 
   ];
 
