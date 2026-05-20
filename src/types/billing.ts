@@ -45,3 +45,81 @@ export type BillingItem = {
   tags?: BillingTagMap;
 
 };
+
+export type BillingFilters = {
+
+  providers?: string[];
+
+  accounts?: string[];
+
+  services?: string[];
+
+  regions?: string[];
+
+  tags?: Record<string, string[]>;
+
+  startDate?: string;
+
+  endDate?: string;
+
+  minCost?: number;
+
+  maxCost?: number;
+
+};
+
+export type BillingGroupedData = {
+
+  name: string;
+
+  value: number;
+
+};
+
+export type BillingTrendPoint = {
+
+  date: string;
+
+  cost: number;
+
+};
+
+export type BillingSummary = {
+
+  totalCost: number;
+
+  awsCost: number;
+
+  huaweiCost: number;
+
+  topService: string;
+
+  topAccount: string;
+
+  topProject: string;
+
+};
+
+export type BillingFilters = {
+
+  start?: string;
+
+  end?: string;
+
+  provider?: string;
+
+  service?: string;
+
+  account?: string;
+
+  tagKey?: string;
+
+  tagValue?: string;
+
+  groupBy?:
+    | "SERVICE"
+    | "ACCOUNT"
+    | "PROVIDER"
+    | "TAG";
+
+};

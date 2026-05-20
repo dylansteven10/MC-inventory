@@ -2,7 +2,6 @@
 
 import {
   useEffect,
-  useMemo,
   useState
 } from "react";
 
@@ -10,21 +9,44 @@ import {
   BillingItem
 } from "@/types/billing";
 
-import BillingCards from "@/components/billing/BillingCards";
-import BillingCharts from "@/components/billing/BillingCharts";
-import BillingTable from "@/components/billing/BillingTable";
-import BillingTagFilters from "@/components/billing/BillingTagFilters";
+import BillingDashboard
+from "@/components/billing/BillingDashboard";
+
+import BillingResources
+from "@/components/billing/BillingResources";
+
+import BillingDateFilters
+from "@/components/billing/BillingDateFilters";
 
 export default function BillingPage() {
 
-  const [billing, setBilling] =
-    useState<BillingItem[]>([]);
+  const [
 
-  const [loading, setLoading] =
-    useState(true);
+    billing,
+    setBilling
 
-  const [selectedTag, setSelectedTag] =
-    useState<string | null>(null);
+  ] = useState<BillingItem[]>([]);
+
+  const [
+
+    loading,
+    setLoading
+
+  ] = useState(true);
+
+  const [
+
+    start,
+    setStart
+
+  ] = useState("2026-01");
+
+  const [
+
+    end,
+    setEnd
+
+  ] = useState("2026-05");
 
   useEffect(() => {
 
@@ -32,8 +54,14 @@ export default function BillingPage() {
 
       try {
 
+        setLoading(true);
+
         const response =
-          await fetch("/api/billing");
+          await fetch(
+
+            `/api/billing?start=${start}&end=${end}`
+
+          );
 
         const json =
           await response.json();
@@ -59,28 +87,7 @@ export default function BillingPage() {
 
     loadBilling();
 
-  }, []);
-
-  const filteredBilling =
-    useMemo(() => {
-
-      if (!selectedTag) {
-
-        return billing;
-
-      }
-
-      return billing.filter((item) => {
-
-        const tags =
-          item.tags || {};
-
-        return Object.values(tags)
-          .includes(selectedTag);
-
-      });
-
-    }, [billing, selectedTag]);
+  }, [start, end]);
 
   return (
 
@@ -88,33 +95,39 @@ export default function BillingPage() {
 
       <div>
 
-        <h1 className="text-3xl font-bold">
-          Billing
+        <h1 className="text-4xl font-bold">
+          Billing Center
         </h1>
 
-        <p className="text-gray-400 mt-1">
-          Costos multi-cloud por servicio, cuenta y tags.
+        <p className="text-gray-400 mt-2">
+
+          Multi-cloud FinOps,
+          costos,
+          tendencias,
+          tags y consumo
+          empresarial.
+
         </p>
 
       </div>
 
-      <BillingTagFilters
+      <BillingDateFilters
+
+        start={start}
+        end={end}
+
+        onStartChange={setStart}
+        onEndChange={setEnd}
+
+      />
+
+      <BillingDashboard
         billing={billing}
-        selectedTag={selectedTag}
-        onSelectTag={setSelectedTag}
-      />
-
-      <BillingCards
-        billing={filteredBilling}
-      />
-
-      <BillingCharts
-        billing={filteredBilling}
-      />
-
-      <BillingTable
-        billing={filteredBilling}
         loading={loading}
+      />
+
+      <BillingResources
+        billing={billing}
       />
 
     </div>

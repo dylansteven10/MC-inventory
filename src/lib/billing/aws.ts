@@ -1,7 +1,6 @@
 import {
 
   CostExplorerClient,
-
   GetCostAndUsageCommand
 
 } from "@aws-sdk/client-cost-explorer";
@@ -14,199 +13,368 @@ import {
   getAWSAccounts
 } from "@/lib/aws/accounts";
 
-const BILLING_TAGS = [
+const TAG_KEYS = [
 
   "Cliente",
   "Proyecto",
-  "Environment"
+  "Environment",
+  "Owner",
+  "CostCenter"
 
 ];
 
-export async function getAWSBilling(): Promise<BillingItem[]> {
+function getKey(
+  item: BillingItem
+) {
+
+  return [
+
+    item.provider,
+    item.accountId,
+    item.service,
+    item.month
+
+  ].join("|");
+
+}
+
+function extractTagValue(
+  raw: string
+) {
+
+  if (!raw) {
+
+    return "Sin tag";
+
+  }
+
+  if (raw.includes("$")) {
+
+    return (
+      raw.split("$")[1]
+      || "Sin tag"
+    );
+
+  }
+
+  return raw;
+
+}
+
+export async function getAWSBilling():
+Promise<BillingItem[]> {
 
   try {
 
     const accounts =
       getAWSAccounts();
 
-    const results =
-      await Promise.all(
+    const consolidated:
+      Record<string, BillingItem> = {};
 
-        accounts.map(async (account) => {
+    for (const account of accounts) {
 
-          const client =
-            new CostExplorerClient({
+      const client =
+        new CostExplorerClient({
 
-              region: "us-east-1",
+          region: "us-east-1",
 
-              credentials: {
+          credentials: {
 
-                accessKeyId:
-                  account.accessKeyId,
+            accessKeyId:
+              account.accessKeyId,
 
-                secretAccessKey:
-                  account.secretAccessKey
-
-              }
-
-            });
-
-          const now =
-            new Date();
-
-          const start =
-            new Date(
-              now.getFullYear(),
-              now.getMonth() - 1,
-              1
-            );
-
-          const end =
-            new Date(
-              now.getFullYear(),
-              now.getMonth(),
-              1
-            );
-
-          const billingItems:
-            BillingItem[] = [];
-
-          for (const tagKey of BILLING_TAGS) {
-
-            const command =
-              new GetCostAndUsageCommand({
-
-                TimePeriod: {
-
-                  Start:
-                    start.toISOString().split("T")[0],
-
-                  End:
-                    end.toISOString().split("T")[0]
-
-                },
-
-                Granularity:
-                  "MONTHLY",
-
-                Metrics: [
-                  "UnblendedCost"
-                ],
-
-                GroupBy: [
-
-                  {
-                    Type: "DIMENSION",
-                    Key: "SERVICE"
-                  },
-
-                  {
-                    Type: "TAG",
-                    Key: tagKey
-                  }
-
-                ]
-
-              });
-
-            const response =
-              await client.send(command);
-
-            const groups =
-
-              response.ResultsByTime?.[0]
-                ?.Groups || [];
-
-            groups.forEach((group) => {
-
-              const service =
-                group.Keys?.[0] || "Unknown";
-
-              const rawTag =
-                group.Keys?.[1] || "";
-
-              const tagValue =
-
-                rawTag.includes("$")
-
-                  ? rawTag.split("$")[1]
-
-                  : "Sin tag";
-
-              const cost =
-                Number(
-
-                  group.Metrics
-                    ?.UnblendedCost
-                    ?.Amount || 0
-
-                );
-
-              if (cost <= 0) {
-
-                return;
-
-              }
-
-              billingItems.push({
-
-                provider:
-                  "AWS",
-
-                accountName:
-                  account.name,
-
-                accountId:
-                  account.accountId,
-
-                service,
-
-                region:
-                  "global",
-
-                resourceId:
-                  undefined,
-
-                resourceName:
-                  undefined,
-
-                usageType:
-                  undefined,
-
-                usageQuantity:
-                  undefined,
-
-                cost,
-
-                currency:
-                  group.Metrics
-                    ?.UnblendedCost
-                    ?.Unit || "USD",
-
-                month:
-                  start.toISOString()
-                    .slice(0, 7),
-
-                tags: {
-
-                  [tagKey]:
-                    tagValue || "Sin tag"
-
-                }
-
-              });
-
-            });
+            secretAccessKey:
+              account.secretAccessKey
 
           }
 
-          return billingItems;
+        });
 
-        })
+      const now =
+        new Date();
 
-      );
+      const start =
+        new Date(
 
-    return results.flat();
+          now.getFullYear(),
+          now.getMonth() - 5,
+          1
+
+        );
+
+      const end =
+        new Date(
+
+          now.getFullYear(),
+          now.getMonth() + 1,
+          1
+
+        );
+
+      /*
+        Base billing
+      */
+
+      const baseResponse =
+        await client.send(
+
+          new GetCostAndUsageCommand({
+
+            TimePeriod: {
+
+              Start:
+                start
+                  .toISOString()
+                  .split("T")[0],
+
+              End:
+                end
+                  .toISOString()
+                  .split("T")[0]
+
+            },
+
+            Granularity:
+              "MONTHLY",
+
+            Metrics: [
+              "UnblendedCost"
+            ],
+
+            GroupBy: [
+
+              {
+                Type: "DIMENSION",
+                Key: "SERVICE"
+              }
+
+            ]
+
+          })
+
+        );
+
+      /*
+        Base rows
+      */
+
+      for (
+        const period of
+        baseResponse.ResultsByTime || []
+      ) {
+
+        const month =
+          period.TimePeriod?.Start
+            ?.slice(0, 7) || "";
+
+        for (
+          const group of
+          period.Groups || []
+        ) {
+
+          const service =
+            group.Keys?.[0]
+            || "Unknown";
+
+          if (
+            service === "__tag__"
+          ) {
+
+            continue;
+
+          }
+
+          const cost =
+            Number(
+
+              group.Metrics
+                ?.UnblendedCost
+                ?.Amount || 0
+
+            );
+
+          if (cost <= 0) {
+
+            continue;
+
+          }
+
+          const item:
+            BillingItem = {
+
+            provider:
+              "AWS",
+
+            accountName:
+              account.name,
+
+            accountId:
+              account.accountId,
+
+            service,
+
+            region:
+              "global",
+
+            cost,
+
+            currency:
+              group.Metrics
+                ?.UnblendedCost
+                ?.Unit || "USD",
+
+            month,
+
+            tags: {}
+
+          };
+
+          consolidated[
+            getKey(item)
+          ] = item;
+
+        }
+
+      }
+
+      /*
+        Tag enrichment
+      */
+
+      for (
+        const tagKey of TAG_KEYS
+      ) {
+
+        const tagResponse =
+          await client.send(
+
+            new GetCostAndUsageCommand({
+
+              TimePeriod: {
+
+                Start:
+                  start
+                    .toISOString()
+                    .split("T")[0],
+
+                End:
+                  end
+                    .toISOString()
+                    .split("T")[0]
+
+              },
+
+              Granularity:
+                "MONTHLY",
+
+              Metrics: [
+                "UnblendedCost"
+              ],
+
+              GroupBy: [
+
+                {
+                  Type: "DIMENSION",
+                  Key: "SERVICE"
+                },
+
+                {
+                  Type: "TAG",
+                  Key: tagKey
+                }
+
+              ]
+
+            })
+
+          );
+
+        for (
+          const period of
+          tagResponse.ResultsByTime || []
+        ) {
+
+          const month =
+            period.TimePeriod?.Start
+              ?.slice(0, 7) || "";
+
+          for (
+            const group of
+            period.Groups || []
+          ) {
+
+            const service =
+              group.Keys?.[0]
+              || "Unknown";
+
+            const rawTag =
+              group.Keys?.[1]
+              || "";
+
+            const tagValue =
+              extractTagValue(
+                rawTag
+              );
+
+            const temp:
+              BillingItem = {
+
+              provider:
+                "AWS",
+
+              accountName:
+                account.name,
+
+              accountId:
+                account.accountId,
+
+              service,
+
+              month,
+
+              cost: 0,
+
+              currency:
+                "USD"
+
+            };
+
+            const key =
+              getKey(temp);
+
+            if (
+              !consolidated[key]
+            ) {
+
+              continue;
+
+            }
+
+            consolidated[
+              key
+            ].tags = {
+
+              ...(consolidated[
+                key
+              ].tags || {}),
+
+              [tagKey]:
+                tagValue
+
+            };
+
+          }
+
+        }
+
+      }
+
+    }
+
+    return Object.values(
+      consolidated
+    );
 
   } catch (error) {
 

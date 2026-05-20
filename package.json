@@ -30,7 +30,10 @@
     "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
     "esdk-obs-nodejs": "^3.26.2",
+    "file-saver": "^2.0.5",
     "framer-motion": "^12.38.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.16.0",
     "next": "16.1.6",
     "next-auth": "^4.24.13",
@@ -40,6 +43,7 @@
     "react-hot-toast": "^2.6.0",
     "recharts": "^3.8.1",
     "tailwind-merge": "^3.6.0",
+    "xlsx": "^0.18.5",
     "xml2js": "^0.6.2",
     "xterm": "^5.3.0"
   },
