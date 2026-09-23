@@ -1,160 +1,304 @@
 # MC Inventory
 
-MC Inventory is a SaaS platform designed to centralize and automate cloud infrastructure inventory management in hybrid and multicloud environments (AWS & Huawei Cloud).
+Plataforma SaaS para centralizar y automatizar la gestion de inventario de infraestructura cloud en entornos hibridos y multicloud (AWS & Huawei Cloud).
 
-## 🚀 Features
+---
 
-### Inventory Management
+## Tabla de contenidos
 
-- Real-time AWS & Huawei Cloud inventory sync
-- EC2 / ECS instance detection
-- RDS / DocumentDB database detection
-- ECS / CCE cluster detection
-- CloudFront / CDN distribution detection
-- Lambda functions inventory
-- S3 / OBS buckets inventory
-- DynamoDB / DDS tables inventory
-- ElastiCache / DCS cache clusters
-- API Gateway inventory
-- Automatic refresh with caching
-- Modern dashboard UI
-- Status visualization (Running / Stopped)
+- [Caracteristicas](#-caracteristicas)
+- [Tech Stack](#-tech-stack)
+- [Arquitectura](#-arquitectura)
+- [Estructura del proyecto](#-estructura-del-proyecto)
+- [Prerrequisitos](#-prerrequisitos)
+- [Inicio rapido (desarrollo local)](#-inicio-rapido-desarrollo-local)
+- [Cifrado de secretos](#-cifrado-de-secretos)
+- [Despliegue productivo en Amazon Linux 2023](#-despliegue-productivo-en-amazon-linux-2023)
+  - [1. Requisitos del servidor](#1-requisitos-del-servidor)
+  - [2. Ruta del proyecto y permisos](#2-ruta-del-proyecto-y-permisos)
+  - [3. Variables de entorno de produccion](#3-variables-de-entorno-de-produccion)
+  - [4. Arranque](#4-arranque)
+  - [5. Exposicion HTTPS](#5-exposicion-https)
+  - [6. Operacion diaria](#6-operacion-diaria)
+  - [7. Backups](#7-backups)
+  - [8. Endurecimiento y checklist pre-produccion](#8-endurecimiento-y-checklist-pre-produccion)
+  - [9. Troubleshooting](#9-troubleshooting)
+- [Seguridad](#-seguridad)
+- [Permisos IAM requeridos](#-permisos-iam-requeridos)
+- [Licencia](#-licencia)
 
-### Monitoring & Logs
+---
 
-- Real-time log aggregation from CloudWatch (AWS) and LTS (Huawei)
-- Advanced log filtering (by provider, account, severity, time range)
-- Metrics dashboard (total logs, errors, warnings, info)
-- Log search functionality
-- Multi-account and multi-region support
+## Caracteristicas
 
-### Billing & Cost Management
+### Inventario multicloud
 
-- AWS Cost Explorer integration
-- Huawei Cloud billing integration
-- Monthly cost breakdown by service
-- Cost trends and forecasting
-- Multi-account cost aggregation
+- Sincronizacion en tiempo real de inventario AWS & Huawei Cloud
+- Deteccion de instancias EC2 / ECS
+- Deteccion de bases de datos RDS / DocumentDB
+- Deteccion de clusters ECS / CCE / EKS
+- Deteccion de distribuciones CloudFront / CDN
+- Inventario de funciones Lambda
+- Inventario de buckets S3 / OBS
+- Inventario de tablas DynamoDB / DDS
+- Clusters ElastiCache / DCS
+- API Gateway
+- Refresco automatico con cacheo en disco (`data/*.json`, TTL configurable)
+- Visualizacion de estado (Running / Stopped / etc.)
 
-## 🛠 Tech Stack
+### Inventario de servidores (EC2 + ECS)
 
-- **Frontend:** Next.js 16 (App Router), TypeScript, TailwindCSS
-- **Backend:** Next.js API Routes, Server-side rendering
-- **Cloud SDKs:** AWS SDK v3, Huawei Cloud SDK
-- **Authentication:** NextAuth.js
-- **Caching:** File-based caching system
-- **Charts:** Recharts
+- Tabla dedicada con todas las instancias EC2 (AWS) y ECS (Huawei Cloud)
+- **Columnas configurables estilo AWS**: icono de tuerca (Preferencias) que permite:
+  - **Mostrar/ocultar columnas** con checkboxes (igual que AWS Console)
+  - **Reordenar columnas con drag-and-drop** (arrastra el grip `⋮⋮` para mover)
+  - Columnas fijas (Provider, Cuenta, Nombre) siempre visibles y bloqueadas
+  - Separador visual entre columnas fijas y ordenables
+  - Persistencia en `localStorage` (sobrevive recargas)
+  - Boton "Restaurar" para volver al orden/visibilidad por defecto
+- **Columnas personalizadas**: boton "Manage Columns" para crear, renombrar y eliminar columnas custom almacenadas en PostgreSQL
+  - Celdas editables inline (click para editar, Enter para guardar, Escape para cancelar)
+  - Aplicacion en bulk: seleccionar multiples servidores y aplicar un valor a una columna custom
+- Ordenamiento por cualquier columna (asc/desc/none)
+- Filtros por Proveedor, Estado y Cuenta
+- Busqueda por nombre, ID, IPs, cuenta, tipo de instancia, OS
+- Paginacion configurable (10, 50, 100, 500 por pagina)
+- Scroll horizontal sincronizado (barra superior + tabla)
+- Exportacion a Excel (.xlsx) y PDF con columnas custom incluidas
+- Seleccion multiple con checkboxes para bulk operations
+- Logos de provider (AWS / Huawei) inline en la tabla
 
-## 📋 Prerequisites
+### Monitoreo y Logs
 
-- Node.js 18+ and npm/pnpm
-- AWS Account(s) with appropriate IAM permissions
-- Huawei Cloud Account(s) with AK/SK credentials
-- Environment variables configured (see `.env.example`)
+- Agregacion de logs en tiempo real desde CloudWatch (AWS) y LTS (Huawei)
+- Filtros avanzados (proveedor, cuenta, severidad, rango de tiempo)
+- Dashboard de metricas (total logs, errores, warnings, info)
+- Busqueda de logs
+- Soporte multi-cuenta y multi-region
 
-## 🚀 Getting Started
+### Facturacion y Costos
 
-### 1. Clone the repository
+- Integracion con AWS Cost Explorer
+- Integracion con facturacion Huawei Cloud
+- Desglose mensual por servicio
+- Tendencias y proyeccion de costos
+- Agregacion multi-cuenta
+
+### Comandos remotos
+
+- Ejecucion de comandos via AWS SSM Run Command
+- Limites configurables (`COMMAND_MAX_TARGETS`, `COMMAND_MAX_LENGTH`)
+- Auditoria de ejecucion (append-only)
+
+### Terminal web
+
+- Terminal interactiva basada en xterm.js
+- Conexion a instancias via SSM
+
+### Auditoria
+
+- Registro append-only de eventos (trigger DB que rechaza UPDATE/DELETE)
+- Hash HMAC de comandos con `AUDIT_HASH_SECRET`
+- Tabla `audit_events` con `timestamptz`
+- Exportacion de auditoria
+
+### Perfil y temas
+
+- 7 temas oscuros (Slate, Purple, Ocean, Sunset, Forest, Midnight, Cherry) + modo claro
+- Selector de tema con preview
+- Roles basados en grupos de Azure AD o admin local
+
+---
+
+## Tech Stack
+
+| Capa | Tecnologia |
+|---|---|
+| Framework | Next.js 16.1.6 (App Router, Turbopack, React 19, React Compiler) |
+| Lenguaje | TypeScript 5 |
+| Estilos | Tailwind CSS v4 + CSS custom properties (glassmorphism, 7 temas) |
+| UI Primitives | Radix UI (Select, Slot, Tabs) + shadcn/ui pattern (CVA, clsx, tailwind-merge) |
+| Iconos | Lucide React |
+| Animaciones | Framer Motion |
+| Drag & Drop | @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/modifiers |
+| Graficos | Recharts |
+| Tablas | @tanstack/react-table (disponible), tabla custom con ordenamiento/paginacion |
+| Notificaciones | react-hot-toast |
+| Auth | NextAuth.js v4 (Azure AD + admin local scrypt) |
+| Cloud AWS | AWS SDK v3 (EC2, ECS, EKS, RDS, S3, Lambda, IAM, SSM, CloudWatch, Cost Explorer, etc.) |
+| Cloud Huawei | Huawei Cloud SDK (ECS, VPC) + REST LTS/BSS |
+| Base de datos | PostgreSQL 16 (pg driver, sin ORM) |
+| Cifrado | AES-256-GCM (AEAD) para AK/SK; scrypt (OWASP) para passwords |
+| Export | ExcelJS, jsPDF + autotable, xlsx, file-saver |
+| Terminal | xterm.js |
+| Cache | File-based (`data/*.json`) + @upstash/redis (opcional) |
+
+---
+
+## Arquitectura
+
+```
+                    Internet
+                       |
+                  ALB / Nginx (443)
+                       |
+              +--------+--------+
+              |   app (3000)    |  Next.js standalone
+              |  docker-entry   |  → migrate.mjs → server.js
+              +--------+--------+
+                       |
+              +--------+--------+
+              | postgres (5432) |  postgres:16-alpine
+              |  ./db/data      |  bind mount persistente
+              +-----------------+
+```
+
+- **app**: imagen multi-stage (`Dockerfile`) con Next.js 16 en modo `standalone`. El `docker-entrypoint.sh` ejecuta `node /app/scripts/migrate.mjs` y **solo arranca si la migracion es exitosa**.
+- **postgres**: `postgres:16-alpine` con **bind mount** `./db/data` → `/var/lib/postgresql/data`. Los datos persisten en el host aunque se elimine el contenedor. Healthcheck con `pg_isready`.
+- Red privada de Compose. Postgres **no expone puertos al host**. `DATABASE_URL` se construye dentro del Compose como `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}`.
+- Healthcheck HTTP: `GET /api/health` → `{"status":"ok"}`.
+
+---
+
+## Estructura del proyecto
+
+```
+mc-inventory/
+├── src/
+│   ├── app/                        # Next.js App Router
+│   │   ├── api/                    # API routes
+│   │   │   ├── inventory/          # Inventario principal
+│   │   │   ├── server-columns/     # CRUD columnas custom + reorder + values
+│   │   │   ├── billing/            # Facturacion
+│   │   │   ├── audit/              # Auditoria
+│   │   │   ├── logs/               # Logs & monitoreo
+│   │   │   ├── monitoring/         # Metricas CloudWatch/LTS
+│   │   │   ├── ec2/                # Run Command (SSM)
+│   │   │   └── health/             # Healthcheck
+│   │   ├── servidores/             # Inventario de servidores (EC2+ECS)
+│   │   ├── dashboard/              # Dashboard
+│   │   ├── billing/                # Pagina facturacion
+│   │   ├── comandos/               # Ejecucion de comandos
+│   │   ├── monitoreo/              # Monitoreo y logs
+│   │   ├── auditoria/              # Auditoria
+│   │   ├── terminal/               # Terminal web
+│   │   ├── profile/                # Perfil y temas
+│   │   ├── login/                  # Login
+│   │   ├── ClientLayout.tsx        # Layout con sidebar + header
+│   │   └── page.tsx                # Home (inventario general)
+│   ├── components/
+│   │   ├── inventory/              # InventoryTable, InventoryCards, MetricsCards, ResourceModal, StatusBadge, etc.
+│   │   ├── ui/                     # Primitivos UI (button, badge, card, input, select, tabs)
+│   │   ├── layout/                 # Sidebar, UserMenu, BrandLogo, SiteFooter
+│   │   ├── audit/                  # Componentes de auditoria
+│   │   ├── billing/                # Componentes de facturacion
+│   │   └── commands/               # Componentes de comandos
+│   ├── lib/
+│   │   ├── inventory/              # exportCsv, normalize, cache, formatTags, getStatusStyle, risk, topology
+│   │   ├── secrets/                # AES-256-GCM + scrypt + fingerprints (crypto.ts)
+│   │   ├── auth/                   # NextAuth config
+│   │   ├── aws/                    # AWS SDK integrations + accounts.ts con descifrado
+│   │   ├── huawei/                 # Huawei Cloud SDK integrations + accounts.ts con descifrado
+│   │   ├── billing/                # Logica de facturacion
+│   │   ├── audit/                  # Logica de auditoria
+│   │   ├── monitoring/             # Logica de monitoreo
+│   │   └── db/                     # Pool PostgreSQL
+│   ├── types/                      # TypeScript types (InventoryItem, etc.)
+│   └── services/aws/               # Servicios AWS
+├── db/
+│   ├── data/                       # Bind mount PostgreSQL (PERSISTENTE, gitignored)
+│   └── migrations/                 # SQL migrations (001_audit_events, 006_server_columns)
+├── scripts/
+│   ├── migrate.mjs                 # Runner de migraciones idempotente
+│   └── secrets.mjs                 # CLI: generate-key | encrypt | decrypt | hash-password | migrate-env
+├── public/logos/                   # SVG logos AWS + Huawei
+├── data/                           # Cache JSON (gitignored, efimero)
+├── docker-compose.yml              # Compose: app + postgres con bind mount
+├── Dockerfile                      # Multi-stage: deps → prod-deps → builder → runner
+├── docker-entrypoint.sh            # migrate → server.js (falla si migracion falla)
+├── .env.example                    # Template de variables (commiteado)
+├── .env.master.key                 # Master key AES-256 (gitignored, chmod 600)
+└── package.json
+```
+
+---
+
+## Prerrequisitos
+
+- Node.js 20+ y npm
+- Docker Engine + Compose v2 (para despliegue)
+- Cuenta(s) AWS con permisos IAM apropiados
+- Cuenta(s) Huawei Cloud con AK/SK
+- Variables de entorno configuradas (ver `.env.example`)
+
+---
+
+## Inicio rapido (desarrollo local)
+
+### 1. Clonar e instalar
 
 ```bash
 git clone <repository-url>
 cd mc-inventory
-```
-
-### 2. Install dependencies
-
-```bash
 npm install
-# or
-pnpm install
 ```
 
-### 3. Configure environment variables
-
-Copy `.env.example` to `.env.local` and fill in your credentials:
+### 2. Configurar variables de entorno
 
 ```bash
 cp .env.example .env.local
+# Editar .env.local con tus credenciales (cifradas como ENC:v1:...)
 ```
 
-**Required variables:**
-
-#### AWS Accounts
-
-```env
-AWS_ACCOUNT_1_NAME=MC Inventory
-AWS_ACCOUNT_1_ACCESS_KEY_ID=your_aws_access_key
-AWS_ACCOUNT_1_SECRET_ACCESS_KEY=your_aws_secret_key
-AWS_ACCOUNT_1_REGION=us-east-1
-```
-
-#### Huawei Cloud Accounts
-
-```env
-HUAWEI_ACCOUNT_1_NAME=mc_inventory
-HUAWEI_ACCOUNT_1_PROJECT_ID=your_project_id
-HUAWEI_ACCOUNT_1_AK=your_access_key
-HUAWEI_ACCOUNT_1_SK=your_secret_key
-HUAWEI_ACCOUNT_1_REGION=la-north-2
-```
-
-**Note:** You can add multiple accounts by incrementing the index (1, 2, 3, etc.)
-
-> 🔐 **No dejes las keys en texto plano.** Los ejemplos anteriores usan placeholders; los valores reales van **cifrados** (`ENC:v1:...`) y el password admin como **hash scrypt**. Sigue el paso **§5. Cifrado de secretos** antes de arrancar.
-
-#### NextAuth Configuration
-
-```env
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your_nextauth_secret_here
-ALLOWED_USERS=user1@example.com,user2@example.com
-```
-
-### 4. Persistent audit database
-
-The audit module uses PostgreSQL through `pg` and does not use an ORM. Set `DATABASE_URL`, `NEXTAUTH_SECRET` and a separate `AUDIT_HASH_SECRET` with at least 32 random characters. The application never logs `DATABASE_URL`; audit metadata is recursively filtered and the `audit_events` table rejects updates and deletes.
-
-Run the idempotent migration before starting the application:
+### 3. Migrar la base de datos
 
 ```bash
 npm run db:migrate
 ```
 
-The migration requires `DATABASE_URL`. In Docker, the application entrypoint waits for the healthy `postgres` service and runs the migration automatically. PostgreSQL is only reachable on the private Compose network by default:
+### 4. Arrancar en modo desarrollo
 
 ```bash
-docker compose up --build
+npm run dev
 ```
 
-The Compose file requires `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `NEXTAUTH_URL`, `NEXTAUTH_SECRET` and `AUDIT_HASH_SECRET` from the shell or an external Compose environment file. It intentionally does not copy `.env.local`. The default Docker network uses an explicit local-only non-TLS PostgreSQL connection because the stock `postgres:16-alpine` service is not provisioned with certificates; use a managed PostgreSQL/private TLS endpoint and `DATABASE_SSL=require` with certificate verification for production. Never set `DATABASE_SSL_REJECT_UNAUTHORIZED=false` in production.
+Abrir [http://localhost:3000](http://localhost:3000).
 
-For a production image, the multi-stage `Dockerfile` builds Next standalone output, includes only the migration runner and migration files, and starts the application only after a successful migration. A failed migration prevents the application from starting.
+### 5. Docker local (opcional)
 
-### 5. Cifrado de secretos (AK/SK y passwords) 🔐
+```bash
+docker compose up --build -d
+# App en http://localhost:3000
+# Datos de Postgres en ./db/data/ (persistente)
+```
 
-> **Concepto clave:** lo "encriptado sin posibilidad de desencriptar" solo existe como **hash**, y un hash de una AK/SK la vuelve **inutilizable** (la app ya no podría firmar peticiones a AWS/Huawei). Por eso el proyecto separa dos casos, cada uno con el mejor método disponible:
+---
 
-| Secreto | Método | Reversible | Dónde |
+## Cifrado de secretos
+
+> **Concepto clave:** lo "encriptado sin posibilidad de desencriptar" solo existe como **hash**, y un hash de una AK/SK la vuelve **inutilizable** (la app ya no podria firmar peticiones a AWS/Huawei). Por eso el proyecto separa dos casos:
+
+| Secreto | Metodo | Reversible | Donde |
 |---|---|---|---|
-| AK/SK y secrets operativos (AWS, Huawei, `NEXTAUTH_SECRET`, `AUDIT_HASH_SECRET`, `AZURE_AD_CLIENT_SECRET`) | **AES-256-GCM** (AEAD, estándar NIST) con master key de 256 bits | Sí, solo en memoria al usarse | `ENC:v1:...` en `.env` |
-| Password del admin local (`LOCAL_ADMIN_PASSWORD`) | **scrypt** (N=16384, r=8, p=1, OWASP) | **No, irreversible.** Solo se verifica | `LOCAL_ADMIN_PASSWORD_HASH=scrypt$...` |
+| AK/SK y secrets operativos | **AES-256-GCM** (AEAD, NIST) con master key 256 bits | Si, solo en memoria | `ENC:v1:...` en `.env` |
+| Password admin local | **scrypt** (N=16384, r=8, p=1, OWASP) | **No, irreversible** | `LOCAL_ADMIN_PASSWORD_HASH=scrypt$...` |
 
-- En disco **nunca hay texto plano**: las AK/SK viven como `ENC:v1:<iv>:<tag>:<ct>` y el password solo como hash. La app descifra **únicamente en memoria** (`src/lib/secrets/crypto.ts`: `resolveSecret()` / `decryptSecret()` / `verifyPassword()`).
-- Excepción honesta: `POSTGRES_PASSWORD` queda en texto plano porque el contenedor `postgres` de Compose lo necesita así para bootstrapping. Es solo local (gitignored); en producción inyéctalo desde un secret manager.
-- La master key vive en `.env.master.key` (gitignored, `chmod 600`) o en el secret manager en producción. **Jamás se commitea.** La app la auto-carga en local; en Docker llega vía `env_file`.
+- En disco **nunca hay texto plano**: las AK/SK viven como `ENC:v1:<iv>:<tag>:<ct>` y el password solo como hash. La app descifra **unicamente en memoria** (`src/lib/secrets/crypto.ts`).
+- Excepcion: `POSTGRES_PASSWORD` queda en texto plano porque el contenedor `postgres` lo necesita para bootstrapping. Solo local (gitignored); en produccion inyectar desde secret manager.
+- La master key vive en `.env.master.key` (gitignored, `chmod 600`) o en el secret manager en produccion. **Jamas se commitea.**
 
 Comandos (`scripts/secrets.mjs`, sin dependencias externas):
 
 ```bash
 node scripts/secrets.mjs generate-key              # master key base64 (32 bytes)
 node scripts/secrets.mjs encrypt "<valor>"         # → ENC:v1:... (requiere CREDENTIALS_MASTER_KEY)
-node scripts/secrets.mjs decrypt "<ENC:v1:...>"    # verificación puntual
+node scripts/secrets.mjs decrypt "<ENC:v1:...>"    # verificacion puntual
 node scripts/secrets.mjs hash-password "<pass>"    # → scrypt$... (irreversible)
 node scripts/secrets.mjs migrate-env --write       # cifra .env y .env.local en su lugar
 # Atajos npm: secrets:key | secrets:encrypt | secrets:hash | secrets:migrate
 ```
 
-Flujo para agregar/rotar una key (ej. nueva cuenta AWS):
+Flujo para agregar/rotar una key:
 
 ```bash
 node scripts/secrets.mjs encrypt "AKIA..."     # → copiar el ENC:v1:...
@@ -162,44 +306,29 @@ node scripts/secrets.mjs encrypt "AKIA..."     # → copiar el ENC:v1:...
 # recrear: docker compose up -d (o npm run dev en local)
 ```
 
-⚠️ **Trampa de Docker Compose con `$`:** compose interpola `$VAR` incluso dentro del `.env`. El hash scrypt contiene `$`, así que **en `.env` se guarda con `$$`** (`scrypt$$16384$$8$$1$$...`); compose lo desescapa a `$` dentro del contenedor y el parser acepta ambas formas. Si ves warnings `variable "..." is not set` al hacer `up`, es un `$` sin escapar. Los valores `ENC:v1:...` (base64) no contienen `$` y son seguros. Por el mismo motivo, `LOCAL_ADMIN_PASSWORD_HASH` **no** se lista en el bloque `environment:` del Compose: llega literal vía `env_file`.
+> **Trampa de Docker Compose con `$`:** compose interpola `$VAR` incluso dentro del `.env`. El hash scrypt contiene `$`, asi que **en `.env` se guarda con `$$`**; compose lo desescapa a `$` dentro del contenedor. Los valores `ENC:v1:...` (base64) no contienen `$` y son seguros. `LOCAL_ADMIN_PASSWORD_HASH` **no** se lista en el bloque `environment:` del Compose: llega literal via `env_file`.
 
-Tras migrar secretos que estuvieron en texto plano, **rótalos** en las consolas de AWS/Huawei (el cifrado protege hacia adelante, no borra la exposición previa).
+Tras migrar secretos que estuvieron en texto plano, **rotalos** en las consolas de AWS/Huawei.
 
-### 6. Run the development server
+---
 
-```bash
-npm run dev
-# or
-pnpm dev
-```
+## Despliegue productivo en Amazon Linux 2023
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## 🚢 Despliegue productivo (Amazon Linux + Docker)
-
-Guía para un servidor **Amazon Linux 2023** con Docker, con el proyecto en la ruta fija:
+Guia para un servidor **Amazon Linux 2023** con Docker, con el proyecto en la ruta fija:
 
 ```
 /libre/devops/apps/MC-Inventory/
 ```
 
-Arquitectura con este repo:
-
-- `app`: imagen multi-stage (`Dockerfile`) con Next.js 16 en modo `standalone`. El `docker-entrypoint.sh` ejecuta `node /app/scripts/migrate.mjs` y **solo arranca si la migración es exitosa**.
-- `postgres`: `postgres:16-alpine` con volumen `postgres_data` y `healthcheck` (`pg_isready`). `app` espera a `postgres` con `depends_on: service_healthy`.
-- Red privada de Compose. Postgres **no expone puertos al host** por defecto. `DATABASE_URL` se construye dentro del Compose como `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}`.
-- Healthcheck HTTP simple: `GET /api/health` → `{"status":"ok"}` (no verifica BD).
-
 ### 1. Requisitos del servidor
 
-- Amazon Linux 2023 (x86_64 o ARM, la imagen `node:20-alpine` y `postgres:16-alpine` son multi-arch).
-- Docker Engine + plugin Compose v2, Git, `openssl` (para generar secretos).
-- DNS apuntando al servidor (ej. `inventario.tudominio.com`) y certificado TLS (recomendado: ALB + ACM; alternativo: Nginx + certbot en el host).
-- Security Group: abrir `80/443` al mundo, **no abrir `3000` ni `5432`** salvo administración temporal desde IP fija.
-- Disco: mínimo 20 GB libres (imágenes + `postgres_data` + logs). Vigilar `/var/lib/docker`.
+- Amazon Linux 2023 (x86_64 o ARM, las imagenes `node:20-alpine` y `postgres:16-alpine` son multi-arch).
+- Docker Engine + plugin Compose v2, Git, `openssl`.
+- DNS apuntando al servidor (ej. `inventario.tudominio.com`) y certificado TLS (recomendado: ALB + ACM; alternativo: Nginx + certbot).
+- Security Group: abrir `80/443` al mundo, **no abrir `3000` ni `5432`** salvo administracion temporal.
+- Disco: minimo 20 GB libres (imagenes + datos PG + logs).
 
-Instalación en Amazon Linux 2023:
+Instalacion en Amazon Linux 2023:
 
 ```bash
 sudo dnf update -y
@@ -218,41 +347,40 @@ sudo mkdir -p /libre/devops/apps/MC-Inventory
 sudo chown -R $USER:$USER /libre/devops/apps/MC-Inventory
 cd /libre/devops/apps/MC-Inventory
 
-# Opción A: clonar
+# Opcion A: clonar
 git clone <repository-url> .
-# Opción B: copiar desde tu PC (ej. scp/rsync) y luego:
-# rsync -avz ./ usuario@servidor:/libre/devops/apps/MC-Inventory/
+# Opcion B: copiar desde tu PC (ej. scp/rsync)
 ```
 
 El directorio debe contener `docker-compose.yml`, `Dockerfile`, `docker-entrypoint.sh`, `db/migrations/`, `scripts/migrate.mjs`, `src/`.
 
-### 3. Variables de entorno de producción (`.env`)
+### 3. Variables de entorno de produccion
 
-Compose **requiere** un archivo `.env` junto al `docker-compose.yml` (no usa `.env.local`). Mínimo obligatorio:
+Compose **requiere** un archivo `.env` junto al `docker-compose.yml` (no usa `.env.local`). Minimo obligatorio:
 
-| Variable | Producción |
+| Variable | Produccion |
 |---|---|
-| `APP_PORT` | `3000` (interno; no exponer directo, ir detrás de ALB/Nginx) |
+| `APP_PORT` | `3000` (interno; no exponer directo, ir detras de ALB/Nginx) |
 | `POSTGRES_DB` / `POSTGRES_USER` | ej. `mc_inventory` / `mc_inventory` |
-| `POSTGRES_PASSWORD` | ≥ 24 caracteres aleatorios, sin `:` `/` `@` `#` (rompen la `DATABASE_URL` construida) |
-| `NEXTAUTH_URL` | URL pública **https**, ej. `https://inventario.tudominio.com` (si es incorrecta falla el login) |
-| `NEXTAUTH_SECRET` | ≥ 32 caracteres aleatorios, **cifrado** como `ENC:v1:...` (ver §5) |
-| `AUDIT_HASH_SECRET` | ≥ 32 caracteres aleatorios, distinto del anterior, **cifrado** como `ENC:v1:...` |
-| `CREDENTIALS_MASTER_KEY` | **No va en `.env`.** Va en `.env.master.key` junto al compose (o secret manager). Generar con `node scripts/secrets.mjs generate-key` |
-| `LOCAL_ADMIN_PASSWORD_HASH` | Hash scrypt del password admin (`node scripts/secrets.mjs hash-password`), con `$` escapados como `$$` en `.env`. Elimina `LOCAL_ADMIN_PASSWORD` |
-| `AWS_ACCOUNT_*_ACCESS_KEY` / `SECRET_KEY`, `HUAWEI_ACCOUNT_*_AK` / `SK` | **Cifradas** como `ENC:v1:...` con `node scripts/secrets.mjs encrypt` |
-| `DATABASE_SSL` | `disable` si usas el `postgres` del Compose (no tiene certificados). `require` solo con RDS/postgres con TLS |
-| Resto (AWS/Huawei/Auth) | copiar los bloques que uses desde `.env.example` |
+| `POSTGRES_PASSWORD` | >= 24 caracteres aleatorios, sin `:` `/` `@` `#` (rompen la `DATABASE_URL`) |
+| `NEXTAUTH_URL` | URL publica **https**, ej. `https://inventario.tudominio.com` |
+| `NEXTAUTH_SECRET` | >= 32 caracteres aleatorios, **cifrado** como `ENC:v1:...` |
+| `AUDIT_HASH_SECRET` | >= 32 caracteres aleatorios, distinto del anterior, **cifrado** como `ENC:v1:...` |
+| `CREDENTIALS_MASTER_KEY` | **No va en `.env`.** Va en `.env.master.key` junto al compose (o secret manager). |
+| `LOCAL_ADMIN_PASSWORD_HASH` | Hash scrypt del password admin, con `$` escapados como `$$` en `.env`. |
+| `AWS_ACCOUNT_*_ACCESS_KEY` / `SECRET_KEY` | **Cifradas** como `ENC:v1:...` |
+| `HUAWEI_ACCOUNT_*_AK` / `SK` | **Cifradas** como `ENC:v1:...` |
+| `DATABASE_SSL` | `disable` si usas el `postgres` del Compose; `require` solo con RDS/TLS |
 
 Generar secretos en el servidor (no reutilizar los de desarrollo):
 
 ```bash
 cd /libre/devops/apps/MC-Inventory
 openssl rand -base64 32  # POSTGRES_PASSWORD (quitar :/@# si aparecen)
-node scripts/secrets.mjs generate-key  # CREDENTIALS_MASTER_KEY → guardar en .env.master.key (chmod 600)
+node scripts/secrets.mjs generate-key  # CREDENTIALS_MASTER_KEY → guardar en .env.master.key
 ```
 
-Crear `.env` a partir de `.env.example` y `.env.master.key` con la master key:
+Crear `.env` y `.env.master.key`:
 
 ```bash
 cp .env.example .env
@@ -268,24 +396,6 @@ node scripts/secrets.mjs encrypt "<AWS_SECRET_KEY>"   # repetir por cada AK/SK
 node scripts/secrets.mjs hash-password "<password-admin>"
 ```
 
-Crear `.env` a partir de `.env.example`:
-
-```bash
-cp .env.example .env
-chmod 600 .env
-# Editar .env: NEXTAUTH_URL=https, passwords/secretos generados,
-# ALLOWED_USERS, ADMIN_EMAILS, LOCAL_ADMIN_*, AZURE_*, AWS_*, HUAWEI_*
-```
-
-Notas importantes:
-
-- El servicio `app` además carga todo el `.env` vía `env_file`, por eso las cuentas `AWS_ACCOUNT_*` / `HUAWEI_ACCOUNT_*` van en el mismo `.env` (cifradas como `ENC:v1:...`). El Compose también carga `.env.master.key` vía `env_file`: **ese archivo debe existir junto al `docker-compose.yml`** (o la app falla con `CREDENTIALS_MASTER_KEY no configurada`).
-- El hash `LOCAL_ADMIN_PASSWORD_HASH` se guarda con `$$` en lugar de `$` en `.env` (compose interpola `$VAR`); el parser acepta ambas formas. Los valores `ENC:v1:...` no contienen `$` y no necesitan escape.
-- Si la instancia EC2 tiene **IAM Role**, preferirlo para la cuenta propia y reservar AK/SK en `.env` solo para cuentas externas. Las keys del `getAWSAccounts()` aceptan `AWS_ACCOUNT_X_ACCESS_KEY` o `AWS_ACCOUNT_X_ACCESS_KEY_ID` (y `SECRET_KEY` o `SECRET_ACCESS_KEY`).
-- **Nunca** pongas `DATABASE_SSL_REJECT_UNAUTHORIZED=false` en producción.
-- `.env*` está en `.gitignore`: no se commitea. El backup del `.env` va al gestor de secretos (AWS Secrets Manager / SSM Parameter Store), no a Git.
-- Si migras a **RDS** más adelante: usa endpoint con TLS, `DATABASE_SSL=require`, y sobreescribe `DATABASE_URL` (el Compose actual la construye contra el servicio `postgres`; necesitarás un `docker-compose.override.yml` o variable externa y retirar/ignorar el servicio `postgres`).
-
 ### 4. Arranque
 
 ```bash
@@ -293,24 +403,25 @@ cd /libre/devops/apps/MC-Inventory
 docker compose config   # valida que no falte ninguna variable :? requerida
 docker compose up --build -d
 docker compose ps
-docker logs -f mc-inventory-app-1        # debe mostrar: Applied migration 001_audit_events.sql + Ready
+docker logs -f mc-inventory-app-1        # debe mostrar: Applied migration ... + Ready
 docker logs -f mc-inventory-postgres-1
 curl -s http://127.0.0.1:3000/api/health  # {"status":"ok"}
 ```
 
-Verificar BD y migración:
+Verificar BD y migracion:
 
 ```bash
 docker exec -it mc-inventory-postgres-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '\dt'
 docker exec -it mc-inventory-postgres-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c 'SELECT name, applied_at FROM schema_migrations;'
-# Esperado: audit_events + schema_migrations con 001_audit_events.sql
 ```
 
-Si el log de `app` muestra `Database migration failed`, el contenedor no arranca (por diseño). Revisa credenciales `POSTGRES_*`, conectividad al servicio `postgres` y `DATABASE_SSL`.
+Si el log de `app` muestra `Database migration failed`, el contenedor no arranca (por diseno). Revisa credenciales `POSTGRES_*`, conectividad y `DATABASE_SSL`.
 
-### 5. Exposición HTTPS (no exponer Node directo)
+### 5. Exposicion HTTPS
 
-Recomendado: **ALB + ACM** delante del host, target group al puerto `3000`, `NEXTAUTH_URL=https://...`. Alternativa con Nginx en el mismo host:
+Recomendado: **ALB + ACM** delante del host, target group al puerto `3000`, `NEXTAUTH_URL=https://...`.
+
+Alternativa con Nginx en el mismo host:
 
 ```nginx
 server {
@@ -335,11 +446,14 @@ server {
 
 Tras cambiar `NEXTAUTH_URL`, recrear: `docker compose up -d`.
 
-### 6. Operación diaria (sin tocar la BD)
+### 6. Operacion diaria
 
-La BD vive en el volumen persistente `postgres_data` (`/var/lib/postgresql/data` dentro del contenedor).
-`docker compose down` **conserva** el volumen y sus registros; solo `docker compose down -v` lo **borra**.
-Aun así, el flujo de despliegue recomendado **ni siquiera detiene postgres**: solo se reconstruye el servicio `app`.
+La BD vive en el **bind mount** `./db/data/` del host, mapeado a `/var/lib/postgresql/data` dentro del contenedor postgres.
+
+**Persistencia de datos:**
+- `docker compose down` **conserva** los datos en `./db/data/` (bind mount en el host).
+- Solo se pierden si **borras manualmente** `./db/data/` o usas `rm -rf db/data`.
+- Los contenedores se pueden eliminar y recrear sin perder datos.
 
 ```bash
 cd /libre/devops/apps/MC-Inventory
@@ -347,126 +461,106 @@ docker compose ps
 docker compose logs --tail 200 app
 docker compose restart app      # solo app, la BD sigue corriendo
 
-# Verificar persistencia del volumen (debe existir aunque los contenedores estén abajo):
-docker volume ls | grep postgres_data
-docker volume inspect <proyecto>_postgres_data
+# Verificar persistencia (datos en el host):
+ls -la db/data/                 # debe mostrar archivos de PostgreSQL
+du -sh db/data/                 # tamano de la BD en disco
 ```
 
-Actualización de versión (solo app, la BD no se detiene ni pierde registros):
+Actualizacion de version (solo app, la BD no se detiene ni pierde registros):
 
 ```bash
 cd /libre/devops/apps/MC-Inventory
 git pull
 docker compose up --build -d app
-docker logs -f mc-inventory-app-1   # esperar "Ready"; la migración corre sola en el entrypoint
+docker logs -f mc-inventory-app-1   # esperar "Ready"; la migracion corre sola
 # Rollback: git checkout <tag-anterior> && docker compose up --build -d app
 ```
 
-> Si algún día necesitas detener todo: `docker compose down` (conserva `postgres_data`).
-> Nunca uses `docker compose down -v` en producción: eso sí borra la BD.
+> Si necesitas detener todo: `docker compose down` (conserva `./db/data/`).
+> **Nunca** uses `rm -rf db/data/` en produccion sin backup previo.
 
-Backups de Postgres (volumen `postgres_data`):
+### 7. Backups
 
-```bash
-# Dump lógico (recomendado, programar en cron diario)
-docker exec mc-inventory-postgres-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc \
-  > /libre/devops/backups/mc-inventory-$(date +%F).dump
-# Restaurar:
-# cat backup.dump | docker exec -i mc-inventory-postgres-1 pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean
-```
-
-Retención sugerida: 7 diarios + 4 semanales, fuera del host (S3). Probar restore al menos una vez.
-
-Ejemplo de cron diario (02:30) con limpieza de dumps de más de 7 días:
+Dump logico (recomendado, programar en cron diario):
 
 ```bash
 sudo mkdir -p /libre/devops/backups
+docker exec mc-inventory-postgres-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc \
+  > /libre/devops/backups/mc-inventory-$(date +%F).dump
+```
+
+Restaurar:
+
+```bash
+cat backup.dump | docker exec -i mc-inventory-postgres-1 pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean
+```
+
+Cron diario (02:30) con limpieza de dumps > 7 dias:
+
+```bash
 crontab -e
 # 30 2 * * * cd /libre/devops/apps/MC-Inventory && set -a && . ./.env && set +a && docker exec mc-inventory-postgres-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc > /libre/devops/backups/mc-inventory-$(date +\%F).dump && find /libre/devops/backups -name 'mc-inventory-*.dump' -mtime +7 -delete
 ```
 
-Verificar un backup (contar eventos sin restaurar):
+Verificar un backup sin restaurar:
 
 ```bash
 pg_restore --list /libre/devops/backups/mc-inventory-2026-01-01.dump | grep -c "TABLE DATA"
 ```
 
-### 7. Endurecimiento y checklist pre-producción
+Retencion sugerida: 7 diarios + 4 semanales, fuera del host (S3). Probar restore al menos una vez.
+
+### 8. Endurecimiento y checklist pre-produccion
 
 - [ ] `.env` con `chmod 600`, propietario correcto, fuera de Git y respaldado en Secrets Manager/SSM.
-- [ ] `NEXTAUTH_URL` https pública, `NEXTAUTH_SECRET` y `AUDIT_HASH_SECRET` fuertes y distintos.
+- [ ] `NEXTAUTH_URL` https publica, `NEXTAUTH_SECRET` y `AUDIT_HASH_SECRET` fuertes y distintos.
 - [ ] `POSTGRES_PASSWORD` fuerte, sin caracteres que rompan la URL.
 - [ ] `DATABASE_SSL=disable` solo con postgres de Compose en red privada; `require` + CA si es RDS/TLS.
 - [ ] Puertos `3000`/`5432` no publicados a internet (SG + sin `ports` extra en Compose).
-- [ ] `restart: unless-stopped` activo (ya viene en el Compose) y Docker con `systemctl enable`.
-- [ ] Reloj NTP y zona horaria del host correctos (auditoría usa `timestamptz`).
+- [ ] `restart: unless-stopped` activo y Docker con `systemctl enable`.
+- [ ] Reloj NTP y zona horaria del host correctos (auditoria usa `timestamptz`).
 - [ ] Logs rotados (`/etc/docker/daemon.json` con `log-driver` + `max-size`, ej. `10m`/`3`).
-- [ ] Espacio en disco monitorizado; `data/*.json` es caché local efímera, no respaldo.
-- [ ] Rotación de secretos definida (ver sección 🔐 Security; `AUDIT_HASH_SECRET` solo en ventana de mantenimiento).
-- [ ] Acceso SSH con key, sin password; usuarios mínimos.
+- [ ] Espacio en disco monitorizado; `data/*.json` es cache local efimero, no respaldo.
+- [ ] Rotacion de secretos definida; `AUDIT_HASH_SECRET` solo en ventana de mantenimiento.
+- [ ] Acceso SSH con key, sin password; usuarios minimos.
+- [ ] Bind mount `./db/data/` con permisos adecuados (postgres necesita ownership del directorio).
+- [ ] Backup de BD verificado y cron programado.
 
-### 8. Troubleshooting en Amazon Linux
+### 9. Troubleshooting
 
-| Síntoma | Causa probable / solución |
+| Sintoma | Causa probable / solucion |
 |---|---|
-| `POSTGRES_* is required` al hacer `config/up` | Falta variable en `.env` o `.env` en otra ruta. Validar con `docker compose config` en `/libre/devops/apps/MC-Inventory` |
+| `POSTGRES_* is required` al hacer `config/up` | Falta variable en `.env` o `.env` en otra ruta. Validar con `docker compose config` |
 | `permission denied` con docker | Falta `usermod -aG docker`, re-login SSH, o usar `sudo` |
 | `port 3000 already in use` | Otro proceso/contenedor. `ss -tlnp \| grep 3000`, cambiar `APP_PORT` o detener el otro servicio |
-| App en loop / `migration failed` | Credenciales PG, `DATABASE_SSL` incorrecto para el destino, o migración SQL con error. Ver `docker logs app` |
-| `CREDENTIALS_MASTER_KEY no configurada` al arrancar | Falta `.env.master.key` junto al compose o la variable en el secret manager. Generar con `node scripts/secrets.mjs generate-key` |
-| Warnings `variable "..." is not set` con `docker compose up` | Un valor del `.env` contiene `$` sin escapar (típico: hash scrypt). Usar `$$` en `LOCAL_ADMIN_PASSWORD_HASH` (ver §5) |
-| Login redirige a localhost | `NEXTAUTH_URL` sigue en `http://localhost:3000`. Poner la URL pública y recrear |
-| `audit_events is append-only` | Normal: la tabla es solo-apéndice por trigger, no se puede UPDATE/DELETE/TRUNCATE |
+| App en loop / `migration failed` | Credenciales PG, `DATABASE_SSL` incorrecto, o migracion SQL con error. Ver `docker logs app` |
+| `CREDENTIALS_MASTER_KEY no configurada` | Falta `.env.master.key` junto al compose. Generar con `node scripts/secrets.mjs generate-key` |
+| Warnings `variable "..." is not set` con `docker compose up` | Un valor del `.env` contiene `$` sin escapar (tipico: hash scrypt). Usar `$$` en `LOCAL_ADMIN_PASSWORD_HASH` |
+| Login redirige a localhost | `NEXTAUTH_URL` sigue en `http://localhost:3000`. Poner la URL publica y recrear |
+| `audit_events is append-only` | Normal: la tabla es solo-apendice por trigger |
 | Disco lleno | `docker system df`, `docker image prune`, podar logs, ampliar EBS |
-| `Conflict. The container name ... is already in use` | Contenedor huérfano de un despliegue anterior. Ver con `docker ps -a`, eliminar con `docker rm -f <nombre>` y repetir `docker compose up -d` |
-| Tras `down`, ¿se pierden los registros? | No, si no usaste `-v`. Comprobar: `docker volume ls \| grep postgres_data` y `SELECT count(*) FROM audit_events;` |
+| `Conflict. The container name ... is already in use` | Contenedor huerfano. `docker ps -a`, `docker rm -f <nombre>` y repetir `docker compose up -d` |
+| Postgres no arranca / `data directory has wrong ownership` | Permisos del bind mount. `sudo chown -R 999:999 ./db/data` (uid de postgres en alpine) o eliminar y recrear: `rm -rf db/data && docker compose up -d` |
+| Tras `down`, ¿se pierden los registros? | No, los datos estan en `./db/data/` (bind mount). Verificar: `ls -la db/data/` |
 
-## 📁 Project Structure
+---
 
-```
-mc-inventory/
-├── src/
-│   ├── app/                    # Next.js App Router pages
-│   │   ├── api/               # API routes
-│   │   │   ├── inventory/    # Inventory API
-│   │   │   ├── billing/      # Billing API
-│   │   │   └── logs/         # Logs & Monitoring API
-│   │   ├── billing/          # Billing page
-│   │   ├── monitoreo/        # Monitoring page
-│   │   └── page.tsx          # Home/Dashboard page
-│   ├── components/            # React components
-│   │   ├── monitoring/       # Monitoring components
-│   │   └── ...               # Other components
-│   ├── lib/                   # Library code
-│   │   ├── aws/              # AWS SDK integrations (+ accounts.ts con descifrado)
-│   │   └── huawei/           # Huawei Cloud SDK integrations (+ accounts.ts con descifrado)
-│   ├── lib/secrets/             # AES-256-GCM + scrypt + fingerprints (crypto.ts)
-│   ├── scripts/secrets.mjs      # CLI: generate-key | encrypt | decrypt | hash-password | migrate-env
-│   ├── .env.master.key          # Master key 256 bits (gitignored, chmod 600)
-│   └── types/                 # TypeScript type definitions
-├── data/                      # Cache files (gitignored)
-├── .env.local            # Environment variables (gitignored)
-├── .env.example               # Environment variables template
-└── README.md                  # This file
-```
+## Seguridad
 
-## 🔐 Security
-
-- AK/SK y secrets operativos se guardan **cifrados con AES-256-GCM** (`ENC:v1:...`) y solo se descifran en memoria (`src/lib/secrets/crypto.ts`). El password admin local se guarda con **hash irreversible scrypt** (`LOCAL_ADMIN_PASSWORD_HASH`); nunca como texto plano (ver §5).
-- Never commit `.env`, `.env.local` ni `.env.master.key` to version control (los tres están en `.gitignore`; solo `.env.example` con placeholders se commitea). El backup de secretos va al gestor de secretos (AWS Secrets Manager / SSM Parameter Store), no a Git.
-- Use IAM roles with least privilege principle
-- Implement proper authentication with NextAuth.js
-- Do not store commands, command output, passwords, tokens, cookies, authorization headers or cloud keys in audit records. SSM execution is disabled when `AUDIT_HASH_SECRET` is absent or weak, or when the pre-execution audit insert fails.
+- AK/SK y secrets operativos se guardan **cifrados con AES-256-GCM** (`ENC:v1:...`) y solo se descifran en memoria (`src/lib/secrets/crypto.ts`). El password admin local se guarda con **hash irreversible scrypt** (`LOCAL_ADMIN_PASSWORD_HASH`); nunca como texto plano.
+- Never commit `.env`, `.env.local` ni `.env.master.key` to version control (los tres estan en `.gitignore`; solo `.env.example` con placeholders se commitea). El backup de secretos va al gestor de secretos (AWS Secrets Manager / SSM Parameter Store), no a Git.
+- Use IAM roles with least privilege principle.
+- Implement proper authentication with NextAuth.js.
+- Do not store commands, command output, passwords, tokens, cookies, authorization headers or cloud keys in audit records.
 - Use `npm run db:migrate` for every schema change; migration names are tracked in `schema_migrations`.
-- Rotate `NEXTAUTH_SECRET`, `AUDIT_HASH_SECRET`, PostgreSQL credentials and cloud credentials through the secret manager. For `AUDIT_HASH_SECRET`, deploy the new value during a maintenance window if continuity of command fingerprints is required, then revoke the old secret; old HMACs cannot be recomputed with the new key.
-- Rotate PostgreSQL credentials by creating a new role/password, updating `DATABASE_URL` in the secret store, validating the migration and restarting the app, then revoking the old role/password. Do not put credentials in the image, Git or logs.
+- Rotate `NEXTAUTH_SECRET`, `AUDIT_HASH_SECRET`, PostgreSQL credentials and cloud credentials through the secret manager.
 - Keep PostgreSQL off the host network unless temporary administrative access is explicitly required and protected by TLS and network controls.
 
-## 🔧 IAM Permissions Required
+---
+
+## Permisos IAM requeridos
 
 ### AWS IAM Permissions
-
-Your AWS IAM user needs the following permissions:
 
 ```json
 {
@@ -505,8 +599,6 @@ Your AWS IAM user needs the following permissions:
 
 ### Huawei Cloud Permissions
 
-Your Huawei Cloud IAM user needs permissions for:
-
 - ECS (Elastic Cloud Server)
 - CCE (Cloud Container Engine)
 - RDS (Relational Database Service)
@@ -515,51 +607,8 @@ Your Huawei Cloud IAM user needs permissions for:
 - LTS (Log Tank Service)
 - BSS (Billing)
 
-## 🐛 Troubleshooting
+---
 
-### Error: `lts.undefined.myhuaweicloud.com`
-
-**Cause:** Missing `HUAWEI_ACCOUNT_X_REGION` in `.env.local`
-
-**Solution:** Add the region to your Huawei account configuration:
-
-```env
-HUAWEI_ACCOUNT_1_REGION=la-north-2  # Mexico City, Mexico
-```
-
-Available Huawei Cloud regions:
-
-- `la-north-2` - Mexico City, Mexico (Latin America)
-- `la-south-2` - Santiago, Chile (Latin America)
-- `ap-southeast-1` - Bangkok, Thailand
-- `ap-southeast-2` - Singapore
-- `ap-southeast-3` - Hong Kong
-- `cn-north-1` - Beijing, China
-- `cn-east-2` - Shanghai, China
-- `cn-south-1` - Guangzhou, China
-
-### Error: `ThrottlingException: Rate exceeded`
-
-**Cause:** Too many API calls to AWS services
-
-**Solution:** The application implements automatic retry with exponential backoff. If the error persists, increase the `CACHE_TTL` value in `.env.local`.
-
-### Error: `InvalidParameterValue: Unrecognized engine name`
-
-**Cause:** Trying to filter DocumentDB with invalid engine names
-
-**Solution:** This has been fixed in the latest version. Make sure you're using the updated code.
-
-### Error: `TypeError: tags is not iterable`
-
-**Cause:** Some AWS services return tags as objects instead of arrays
-
-**Solution:** This has been fixed in the latest version. The `formatAwsTags` function now handles both arrays and objects.
-
-## 📝 License
+## Licencia
 
 MIT License
-
-## 👥 Contributors
-
-Developed by the MC Inventory team.

@@ -2,13 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Loader2, Menu } from "lucide-react";
+import { Loader2, Menu, ChevronRight } from "lucide-react";
 
 import Sidebar from "@/components/layout/Sidebar";
 import SiteFooter from "@/components/layout/SiteFooter";
 import UserMenu from "@/components/layout/UserMenu";
+import BrandLogo from "@/components/layout/BrandLogo";
 
 const AUTH_ROUTES = ["/login", "/auth"];
+
+const PAGE_NAMES: Record<string, string> = {
+  "/": "Inventario",
+  "/dashboard": "Dashboard",
+  "/monitoreo": "Monitoreo",
+  "/servidores": "Servidores",
+  "/comandos": "Comandos",
+  "/billing": "Billing",
+  "/auditoria": "Auditoría",
+};
 
 export default function ClientLayout({
   children
@@ -29,47 +40,11 @@ export default function ClientLayout({
   ] = useState(false);
 
   const [
-    time,
-    setTime
-  ] = useState("");
-
-  const [
     routeLoading,
     setRouteLoading
   ] = useState(false);
 
   useEffect(() => {
-
-    const updateClock = () => {
-
-      setTime(
-
-        new Date().toLocaleTimeString(
-          "es-CO",
-          {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          }
-
-        )
-
-      );
-
-    };
-
-    updateClock();
-
-    const interval =
-      setInterval(updateClock, 1000);
-
-    return () =>
-      clearInterval(interval);
-
-  }, []);
-
-  useEffect(() => {
-
     if (!routeLoading) return;
 
     const timeout =
@@ -82,28 +57,20 @@ export default function ClientLayout({
 
   }, [pathname, routeLoading]);
 
-  if (isAuthPage) {
+  const pageName = PAGE_NAMES[pathname || ""] || "MC Inventory";
 
+  if (isAuthPage) {
     return (
       <div className="flex min-h-screen flex-col bg-[var(--bg-dark)] text-[var(--text-primary)]">
         <div className="min-h-0 flex-1">{children}</div>
         <SiteFooter />
       </div>
     );
-
   }
 
   return (
 
-    <div
-      className="
-        min-h-screen
-        overflow-hidden
-        bg-[var(--bg-dark)]
-        text-[var(--text-primary)]
-        transition-colors
-      "
-    >
+    <div className="min-h-screen overflow-hidden bg-[var(--bg-dark)] text-[var(--text-primary)] transition-colors">
 
       <Sidebar
         open={sidebarOpen}
@@ -116,151 +83,80 @@ export default function ClientLayout({
       />
 
       {sidebarOpen && (
-
         <div
           onClick={() =>
             setSidebarOpen(false)
           }
-          className="
-            fixed
-            inset-0
-            z-40
-
-            bg-black/40
-            backdrop-blur-sm
-          "
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300"
         />
-
       )}
 
       <div
         className={`
           transition-all
           duration-300
+          ease-in-out
           min-h-screen
           flex
           flex-col
-
-          ${
-
-            sidebarOpen
-
-              ? "lg:ml-[280px]"
-
-              : "ml-0"
-
-          }
+          ${sidebarOpen ? "lg:ml-[280px]" : "ml-0"}
         `}
       >
-
-        {/* TOPBAR */}
 
         <header
           className="
             sticky
             top-0
             z-30
-
-            h-16
-
+            h-14
             border-b
             border-[var(--border)]
-
-            bg-[var(--bg-card)]/80
-            backdrop-blur-xl
-
+            bg-[var(--bg-dark)]
             px-5
-
             flex
             items-center
             justify-between
           "
         >
 
-          {/* LEFT */}
-
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
 
             <button
               onClick={() =>
                 setSidebarOpen(!sidebarOpen)
               }
               className="
-                w-11
-                h-11
-
-                rounded-xl
-
-                border
-                border-[var(--border)]
-
-                bg-[var(--bg-hover)]
-
+                w-8
+                h-8
+                rounded-lg
                 flex
                 items-center
                 justify-center
-
-                hover:scale-105
-                hover:border-[var(--primary)]
-
+                text-[var(--text-secondary)]
+                hover:text-[var(--text-primary)]
+                hover:bg-[var(--bg-hover)]
                 transition-all
               "
             >
-
-              <Menu size={20} />
-
+              <Menu size={18} />
             </button>
 
-            <div>
-
-              <h1 className="font-semibold text-lg">
-                MC Inventory
-              </h1>
-
-              <p
-                className="
-                  text-xs
-                  text-[var(--text-secondary)]
-                "
-              >
-                 UX Technology | Multi Cloud Inventory
-              </p>
-
+            <div className="flex items-center gap-1.5 text-sm">
+              <BrandLogo size={22} />
+              <ChevronRight size={14} className="text-[var(--border)]" />
+              <span className="font-medium text-[var(--text-primary)]">{pageName}</span>
             </div>
 
           </div>
 
-          {/* RIGHT */}
-
-          <div className="flex items-center gap-5">
-
-            <div className="text-right">
-
-              <p
-                className="
-                  text-xs
-                  text-[var(--text-secondary)]
-                "
-              >
-                Última actualización
-              </p>
-
-              <p className="text-sm font-semibold">
-                {time}
-              </p>
-
-            </div>
-
+          <div className="flex items-center gap-4">
             <UserMenu />
-
           </div>
 
         </header>
 
         <main className="flex-1 p-6">
-
           {children}
-
         </main>
 
         <SiteFooter />
@@ -295,30 +191,29 @@ function RouteLoadingOverlay({
         backdrop-blur-xl
         transition-all
         duration-300
-        ${
-          visible
-            ? "opacity-100 pointer-events-auto"
-            : "opacity-0 pointer-events-none"
+        ${visible
+          ? "opacity-100 pointer-events-auto"
+          : "opacity-0 pointer-events-none"
         }
       `}
     >
 
       <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-2xl">
         <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-500/10">
-            <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-hover)]">
+            <Loader2 className="h-5 w-5 animate-spin text-[var(--primary)]" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-[var(--text-primary)]">
+            <p className="text-sm font-medium text-[var(--text-primary)]">
               Cargando módulo
             </p>
-            <p className="mt-1 text-xs text-[var(--text-secondary)]">
-              Preparando datos y visualizaciones...
+            <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+              Preparando datos...
             </p>
           </div>
         </div>
-        <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-white/5">
-          <div className="h-full w-2/3 animate-pulse rounded-full bg-cyan-400" />
+        <div className="mt-4 h-1 overflow-hidden rounded-full bg-[var(--bg-hover)]">
+          <div className="h-full w-2/3 animate-pulse rounded-full bg-[var(--primary)]" />
         </div>
       </div>
 

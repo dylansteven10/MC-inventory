@@ -23,6 +23,7 @@ import {
   Activity,
 } from "lucide-react";
 import Image from "next/image";
+import BrandLogo from "@/components/layout/BrandLogo";
 
 import { InventoryItem } from "@/types/inventory";
 import InventoryTable from "@/components/inventory/InventoryTable";
@@ -47,45 +48,19 @@ type SortField =
 /* ── Loading skeleton ── */
 function LoadingScreen() {
   return (
-    <div className="fixed inset-0 bg-[#080c14] flex items-center justify-center z-50">
-      <style jsx global>{`
-        @keyframes shimmer {
-          0% {
-            background-position: -200% 0;
-          }
-          100% {
-            background-position: 200% 0;
-          }
-        }
-        .shimmer {
-          background: linear-gradient(
-            90deg,
-            rgba(255, 255, 255, 0.03) 25%,
-            rgba(255, 255, 255, 0.07) 50%,
-            rgba(255, 255, 255, 0.03) 75%
-          );
-          background-size: 200% 100%;
-          animation: shimmer 1.5s infinite;
-        }
-      `}</style>
-      <div className="text-center space-y-6">
-        <div className="relative mx-auto w-20 h-20">
-          <div
-            className="absolute inset-0 rounded-2xl animate-ping opacity-20"
-            style={{ background: "linear-gradient(135deg, #7c3aed, #06b6d4)" }}
-          />
-          <div
-            className="relative w-20 h-20 rounded-2xl flex items-center justify-center font-bold text-2xl text-[var(--text-primary)]"
-            style={{ background: "linear-gradient(135deg, #7c3aed, #06b6d4)" }}
-          >
-            MC
-          </div>
+    <div className="fixed inset-0 bg-[var(--bg-dark)] flex items-center justify-center z-50">
+      <div className="text-center space-y-4 flex flex-col items-center">
+        <div
+          className="flex items-center justify-center rounded-xl"
+          style={{ width: 56, height: 56, background: "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))" }}
+        >
+          <BrandLogo size={40} />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">
+          <h1 className="text-xl font-bold text-[var(--text-primary)] mb-1">
             MC Inventory
           </h1>
-          <p className="text-[var(--text-primary)]/40 text-sm">
+          <p className="text-[var(--text-secondary)] text-sm">
             Cargando inventario cloud...
           </p>
         </div>
@@ -93,7 +68,7 @@ function LoadingScreen() {
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className="w-2 h-2 rounded-full bg-cyan-500 animate-bounce"
+              className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] animate-bounce"
               style={{ animationDelay: `${i * 0.15}s` }}
             />
           ))}
@@ -348,155 +323,89 @@ export default function Home() {
 
   return (
     <>
-      <style jsx global>{`
-        @keyframes fadeUp {
-          from {
-            opacity: 0;
-            transform: translateY(12px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: translateY(-8px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .page-section {
-          animation: fadeUp 0.4s ease both;
-        }
-        .filter-panel {
-          animation: slideIn 0.25s ease both;
-        }
-      `}</style>
-
-      <div className="min-h-screen space-y-6">
-        {/* ── Page header ── */}
-        <div className="page-section">
-          <div className="relative overflow-hidden rounded-2xl border border-[var(--border)] p-5"
-            style={{ background: "var(--glass-bg)", backdropFilter: "blur(16px)" }}
-          >
-            {/* Decorative gradient glow */}
-            <div className="absolute -top-20 -right-20 w-60 h-60 rounded-full opacity-20 blur-3xl pointer-events-none"
+      <div className="min-h-screen space-y-5">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-white"
               style={{ background: "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))" }}
-            />
-            <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full opacity-10 blur-3xl pointer-events-none"
-              style={{ background: "linear-gradient(135deg, var(--gradient-secondary-start), var(--gradient-secondary-end))" }}
-            />
-
-            <div className="relative z-10 flex items-start justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  <div className="absolute inset-0 rounded-xl animate-ping opacity-15"
-                    style={{ background: "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))" }}
-                  />
-                  <div
-                    className="relative w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold text-white shadow-lg"
-                    style={{ background: "linear-gradient(135deg, var(--gradient-start), var(--gradient-end))" }}
-                  >
-                    <BarChart3 size={18} />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h1 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">
-                      Dashboard
-                    </h1>
-                    {refreshing && (
-                      <span className="flex items-center gap-1.5 text-[11px] text-cyan-400 bg-cyan-400/10 px-2 py-0.5 rounded-full border border-cyan-400/20">
-                        <RefreshCw className="w-3 h-3 animate-spin" />
-                        Actualizando
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-[var(--text-primary)]/40 mt-0.5">
-                    <Activity size={12} className="inline mr-1.5 -mt-0.5 text-[var(--primary)]/50" />
-                    Inventario Cloud Centralizado
-                    {lastUpdate && (
-                      <span className="ml-2 text-[var(--text-primary)]/20">
-                        · actualizado <span className="text-[var(--text-primary)]/40 font-medium">{lastUpdate}</span>
-                      </span>
-                    )}
-                  </p>
-                </div>
+            >
+              <BarChart3 size={16} />
+            </div>
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-lg font-bold text-[var(--text-primary)] tracking-tight">
+                  Inventario Cloud
+                </h1>
+                {refreshing && (
+                  <span className="flex items-center gap-1.5 text-[11px] text-[var(--primary)] bg-[var(--primary)]/10 px-2 py-0.5 rounded-full">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Actualizando
+                  </span>
+                )}
               </div>
+              <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                Inventario Cloud Centralizado
+                {lastUpdate && (
+                  <span className="ml-2">
+                    · actualizado <span className="font-medium">{lastUpdate}</span>
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
 
-              <div className="flex items-center gap-2">
-                {/* View toggle */}
-                <div className="flex items-center gap-1 bg-[var(--bg-card)]/80 border border-[var(--border)] rounded-xl p-1">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("table")}
-                    className={`p-2 rounded-lg transition-all duration-200 ${
-                      viewMode === "table"
-                        ? "bg-[var(--bg-hover)] text-[var(--text-primary)] shadow-sm"
-                        : "text-[var(--text-primary)]/30 hover:text-[var(--text-primary)]/60"
-                    }`}
-                    title="Vista tabla"
-                  >
-                    <List className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("cards")}
-                    className={`p-2 rounded-lg transition-all duration-200 ${
-                      viewMode === "cards"
-                        ? "bg-[var(--bg-hover)] text-[var(--text-primary)] shadow-sm"
-                        : "text-[var(--text-primary)]/30 hover:text-[var(--text-primary)]/60"
-                    }`}
-                    title="Vista tarjetas"
-                  >
-                    <LayoutGrid className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 border border-[var(--border)] rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`p-1.5 rounded-md transition-all ${
+                  viewMode === "table"
+                    ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                }`}
+                title="Vista tabla"
+              >
+                <List className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`p-1.5 rounded-md transition-all ${
+                  viewMode === "cards"
+                    ? "bg-[var(--bg-hover)] text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                }`}
+                title="Vista tarjetas"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>
 
-        {/* ── Metrics ── */}
-        <div className="page-section" style={{ animationDelay: "0.05s" }}>
-          <MetricsCards data={filteredData} />
-        </div>
+        <MetricsCards data={filteredData} />
 
-        {/* ── Filter panel ── */}
-        <div className="page-section" style={{ animationDelay: "0.1s" }}>
-          <div
-            ref={filtersRef}
-            className="relative z-30 rounded-2xl border border-[var(--border)] overflow-visible transition-all duration-300"
-            style={{
-              background: "var(--glass-bg)",
-              backdropFilter: "blur(16px)",
-            }}
-          >
-            {/* Toolbar */}
-            <div className="p-4 flex flex-col xl:flex-row gap-3">
-              {/* Search */}
+        <div
+          ref={filtersRef}
+          className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-visible"
+        >
+            <div className="p-3 flex flex-col xl:flex-row gap-3">
               <div className="relative flex-1 group">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-primary)]/20 pointer-events-none transition-colors group-focus-within:text-cyan-400/60" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)] pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Buscar recursos, IDs, IPs, tags..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-10 pr-10 py-2.5 rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-primary)]/25 outline-none transition-all duration-200 border focus:border-cyan-500/40"
-                  style={{
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                  }}
+                  className="w-full pl-9 pr-9 py-2 rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] outline-none transition-all border border-[var(--border)] bg-[var(--bg-hover)]/50 focus:border-[var(--primary)]/50"
                 />
                 {search && (
                   <button
                     type="button"
                     onClick={() => setSearch("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-primary)]/30 hover:text-[var(--text-primary)]/70 transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                     aria-label="Limpiar búsqueda"
                   >
                     <X className="w-4 h-4" />
@@ -504,23 +413,22 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Action buttons */}
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setFiltersOpen((current) => !current)}
                   aria-expanded={filtersOpen}
                   aria-controls="inventory-filter-sections"
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200 ${
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
                     filtersOpen || activeFiltersCount > 0
-                      ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-400 shadow-sm shadow-cyan-500/10"
-                      : "bg-[var(--bg-card)]/60 border-[var(--border)] text-[var(--text-primary)]/60 hover:text-[var(--text-primary)] hover:border-white/20 hover:bg-[var(--bg-hover)]"
+                      ? "bg-[var(--primary)]/10 border-[var(--primary)]/30 text-[var(--primary)]"
+                      : "border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)] hover:bg-[var(--bg-hover)]"
                   }`}
                 >
                   <Filter className="w-4 h-4" />
                   Filtros
                   {activeFiltersCount > 0 && (
-                    <span className="bg-cyan-500 text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                    <span className="bg-[var(--primary)] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
                       {activeFiltersCount}
                     </span>
                   )}
@@ -537,7 +445,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={clearFilters}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:border-red-500/30 transition-all duration-200"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
                   >
                     <RotateCcw className="w-4 h-4" />
                     Limpiar
@@ -546,33 +454,22 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Results summary */}
-            <div className="px-5 py-2.5 flex items-center gap-3 text-xs border-t border-white/5 bg-[var(--bg-hover)]/30">
+            <div className="px-4 py-2 flex items-center gap-3 text-xs border-t border-[var(--border)] bg-[var(--bg-hover)]/30">
               <div className="flex items-center gap-2 flex-1">
                 <div
                   className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                    filteredData.length < data.length ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.4)]" : "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.4)]"
+                    filteredData.length < data.length ? "bg-amber-400" : "bg-emerald-400"
                   }`}
                 />
-                <span className="text-[var(--text-primary)]/30">
-                  Mostrando
-                </span>
-                <span className="text-[var(--text-primary)] font-semibold tabular-nums">
-                  {filteredData.length}
-                </span>
-                <span className="text-[var(--text-primary)]/20">
-                  de
-                </span>
-                <span className="text-[var(--text-primary)] font-semibold tabular-nums">
-                  {data.length}
-                </span>
-                <span className="text-[var(--text-primary)]/30">
-                  recursos
-                </span>
+                <span className="text-[var(--text-secondary)]">Mostrando</span>
+                <span className="text-[var(--text-primary)] font-semibold tabular-nums">{filteredData.length}</span>
+                <span className="text-[var(--text-secondary)]">de</span>
+                <span className="text-[var(--text-primary)] font-semibold tabular-nums">{data.length}</span>
+                <span className="text-[var(--text-secondary)]">recursos</span>
                 {activeFiltersCount > 0 && (
                   <>
                     <span className="text-[var(--text-primary)]/10">·</span>
-                    <span className="text-cyan-400/80 font-medium">
+                    <span className="text-[var(--primary)] font-medium">
                       {activeFiltersCount} filtro{activeFiltersCount > 1 ? "s" : ""} activo{activeFiltersCount > 1 ? "s" : ""}
                     </span>
                   </>
@@ -580,7 +477,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Filter sections */}
             <div
               id="inventory-filter-sections"
               className="overflow-hidden transition-all duration-300 ease-in-out"
@@ -590,7 +486,7 @@ export default function Home() {
               }}
             >
               {filtersOpen && (
-                <div className="filter-panel border-t border-[var(--border)] p-4 space-y-4">
+                <div className="border-t border-[var(--border)] p-4 space-y-4">
                   <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
                   <FilterBlock
                     title="Infraestructura"
@@ -648,16 +544,16 @@ export default function Home() {
                         setSelected={setSelectedProjects}
                       />
                       <div>
-                        <p className="text-[10px] uppercase tracking-widest text-[var(--text-primary)]/25 mb-2.5">
+                        <p className="text-[10px] uppercase tracking-widest text-[var(--text-secondary)] mb-2">
                           Sin tags
                         </p>
                         <button
                           type="button"
                           onClick={() => setOnlyWithoutTags(!onlyWithoutTags)}
-                          className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm border transition-all duration-200 ${
+                          className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm border transition-all ${
                             onlyWithoutTags
-                              ? "bg-amber-500/15 border-amber-500/30 text-amber-400 shadow-sm shadow-amber-500/10"
-                              : "bg-[var(--bg-card)]/60 border-[var(--border)] text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] hover:border-white/20 hover:bg-[var(--bg-hover)]"
+                              ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                              : "border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
                           }`}
                         >
                           {onlyWithoutTags && (
@@ -675,21 +571,18 @@ export default function Home() {
               )}
             </div>
           </div>
-        </div>
 
-        {/* ── Inventory ── */}
-        <div className="page-section" style={{ animationDelay: "0.15s" }}>
-          {/* Section header */}
-          <div className="flex items-center gap-3 mb-4">
+        <div>
+          <div className="flex items-center gap-3 mb-3">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-[var(--primary)]/10 flex items-center justify-center">
-                <Database size={12} className="text-[var(--primary)]" />
+              <div className="w-5 h-5 rounded-md bg-[var(--primary)]/10 flex items-center justify-center">
+                <Database size={11} className="text-[var(--primary)]" />
               </div>
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">
                 {filteredData.length === 1 ? "1 recurso" : `${filteredData.length} recursos`}
               </h2>
             </div>
-            <div className="flex-1 h-px bg-gradient-to-r from-[var(--border)] to-transparent" />
+            <div className="flex-1 h-px bg-[var(--border)]" />
           </div>
 
           {/* Inventory view */}
@@ -803,7 +696,7 @@ function ExportMenu({ rows }: { rows: InventoryItem[] }) {
       disabled={disabled}
       aria-haspopup="menu"
       aria-expanded={open}
-      className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card)]/60 px-4 py-2.5 text-sm font-medium text-[var(--text-primary)]/70 transition-all duration-200 hover:border-cyan-400/30 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+      className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-all hover:border-[var(--primary)]/30 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
     >
       <Download className="h-4 w-4" />
       Exportar
@@ -818,7 +711,7 @@ function ExportMenu({ rows }: { rows: InventoryItem[] }) {
         <div
           ref={menuRef}
           role="menu"
-          className="fixed z-[9999] w-60 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_18px_50px_rgba(0,0,0,0.42)]"
+          className="fixed z-[9999] w-56 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-card)] shadow-2xl"
           style={{ top: menuPosition.top, right: menuPosition.right }}
         >
           <div className="border-b border-[var(--border)] px-4 py-3">
@@ -873,30 +766,29 @@ function FilterBlock({ title, icon, accentColor, children }: any) {
   const contentId = `inventory-filter-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   return (
     <div
-      className="overflow-hidden rounded-2xl border border-[var(--border)] transition-all duration-300 hover:border-white/15"
-      style={{ background: "rgba(255,255,255,0.02)" }}
+      className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-hover)]/30"
     >
       <button
         type="button"
         onClick={() => setOpen((current: boolean) => !current)}
         aria-expanded={open}
         aria-controls={contentId}
-        className="group flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.025]"
+        className="group flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <div
-            className="flex h-8 w-8 items-center justify-center rounded-xl transition-transform group-hover:scale-105"
+            className="flex h-7 w-7 items-center justify-center rounded-md"
             style={{ background: `${accentColor}15`, color: accentColor }}
           >
             {icon}
           </div>
-          <span className="text-sm font-semibold tracking-tight text-[var(--text-primary)]">{title}</span>
+          <span className="text-sm font-medium text-[var(--text-primary)]">{title}</span>
         </div>
         <div
           className="transition-transform duration-200"
           style={{ transform: open ? "rotate(0deg)" : "rotate(-90deg)" }}
         >
-          <ChevronDown className="h-4 w-4 text-[var(--text-primary)]/30" />
+          <ChevronDown className="h-4 w-4 text-[var(--text-secondary)]" />
         </div>
       </button>
       <div
@@ -908,7 +800,7 @@ function FilterBlock({ title, icon, accentColor, children }: any) {
         }}
       >
         {open && (
-          <div className="space-y-4 border-t border-white/5 px-4 pb-4 pt-4">
+          <div className="space-y-3 border-t border-[var(--border)] px-3 pb-3 pt-3">
             {children}
           </div>
         )}
@@ -927,7 +819,7 @@ function ProviderFilterSection({ values, selected, setSelected }: any) {
 
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-widest text-[var(--text-primary)]/25 mb-2.5">
+      <p className="text-[10px] uppercase tracking-widest text-[var(--text-secondary)] mb-2">
         Provider
       </p>
       <div className="flex flex-wrap gap-2">
@@ -944,37 +836,29 @@ function ProviderFilterSection({ values, selected, setSelected }: any) {
                 )
               }
               title={value}
-              className={`relative flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border transition-all duration-200 group ${
+              className={`relative flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
                 active
-                  ? "bg-cyan-500/15 border-cyan-500/40 shadow-lg shadow-cyan-500/15"
-                  : "bg-[var(--bg-card)]/60 border-[var(--border)] hover:border-cyan-500/30 hover:bg-[var(--bg-hover)] hover:shadow-sm"
+                  ? "bg-[var(--primary)]/10 border-[var(--primary)]/30"
+                  : "border-[var(--border)] hover:border-[var(--primary)]/20 hover:bg-[var(--bg-hover)]"
               }`}
             >
               {logo && (
-                <div className="relative w-7 h-7 flex items-center justify-center">
+                <div className="relative w-6 h-6 flex items-center justify-center">
                   <Image
                     src={logo}
                     alt={value}
-                    width={28}
-                    height={28}
-                    className={`transition-transform duration-200 ${active ? "scale-110" : "group-hover:scale-105"}`}
+                    width={24}
+                    height={24}
                   />
                 </div>
               )}
               <span
-                className={`text-xs font-medium transition-colors ${
-                  active ? "text-cyan-400" : "text-[var(--text-primary)]/50 group-hover:text-[var(--text-primary)]/80"
+                className={`text-xs font-medium ${
+                  active ? "text-[var(--primary)]" : "text-[var(--text-secondary)]"
                 }`}
               >
                 {value === "HUAWEI CLOUD" ? "Huawei" : value}
               </span>
-              {active && (
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full flex items-center justify-center">
-                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-              )}
             </button>
           );
         })}
@@ -993,7 +877,7 @@ function FilterSection({
 }: any) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-widest text-[var(--text-primary)]/25 mb-2.5">
+      <p className="text-[10px] uppercase tracking-widest text-[var(--text-secondary)] mb-2">
         {title}
       </p>
       <div className="flex flex-wrap gap-1.5">
@@ -1008,15 +892,15 @@ function FilterSection({
                   active ? p.filter((v) => v !== value) : [...p, value],
                 )
               }
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${
+              className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${
                 active
-                  ? "bg-cyan-500/20 border-cyan-500/40 text-cyan-400 shadow-sm shadow-cyan-500/10"
+                  ? "bg-[var(--primary)]/15 border-[var(--primary)]/30 text-[var(--primary)]"
                   : coloredStatus
                     ? getStatusChipStyle(value)
-                    : "bg-[var(--bg-card)]/60 border-[var(--border)] text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] hover:border-white/20 hover:bg-[var(--bg-hover)]"
+                    : "border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)] hover:bg-[var(--bg-hover)]"
               }`}
             >
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1">
                 {active && (
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />

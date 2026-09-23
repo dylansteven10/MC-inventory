@@ -38,7 +38,6 @@ export default function MetricsCards({ data }: Props) {
       subtitle: "Filtrados",
       icon: Boxes,
       color: "var(--primary)",
-      gradient: "linear-gradient(135deg, var(--primary), var(--accent))",
     },
     {
       label: "Providers",
@@ -46,7 +45,6 @@ export default function MetricsCards({ data }: Props) {
       subtitle: "Clouds activos",
       icon: Cloud,
       color: "var(--info)",
-      gradient: "linear-gradient(135deg, var(--info), #06b6d4)",
     },
     {
       label: "Servicios",
@@ -54,7 +52,6 @@ export default function MetricsCards({ data }: Props) {
       subtitle: "Tipos únicos",
       icon: Server,
       color: "var(--warning)",
-      gradient: "linear-gradient(135deg, var(--warning), #f97316)",
     },
     {
       label: "Running",
@@ -62,7 +59,6 @@ export default function MetricsCards({ data }: Props) {
       subtitle: "Operativos",
       icon: Shield,
       color: "var(--success)",
-      gradient: "linear-gradient(135deg, var(--success), #34d399)",
     },
     {
       label: "Servidores",
@@ -70,7 +66,6 @@ export default function MetricsCards({ data }: Props) {
       subtitle: "EC2 + Huawei ECS",
       icon: Cpu,
       color: "var(--info)",
-      gradient: "linear-gradient(135deg, var(--info), #06b6d4)",
     },
     {
       label: "Cuentas",
@@ -78,7 +73,6 @@ export default function MetricsCards({ data }: Props) {
       subtitle: "Bajo gestión",
       icon: AlertTriangle,
       color: "var(--secondary)",
-      gradient: "linear-gradient(135deg, var(--secondary), #a78bfa)",
     },
   ];
 
@@ -89,34 +83,21 @@ export default function MetricsCards({ data }: Props) {
         return (
           <div
             key={metric.label}
-            className="group relative overflow-hidden rounded-2xl border border-[var(--border)] p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl"
-            style={{
-              background: "var(--bg-card)",
-              boxShadow: "0 2px 20px var(--shadow-color)",
-            }}
+            className="relative overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-3.5 transition-colors duration-200 hover:border-[color-mix(in_srgb,var(--primary)_20%,var(--border))]"
           >
-            {/* Top accent bar */}
             <div
-              className="absolute top-0 left-3 right-3 h-0.5 rounded-full opacity-60 transition-all duration-300 group-hover:opacity-100 group-hover:h-1"
-              style={{ background: metric.gradient }}
+              className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full opacity-70"
+              style={{ background: metric.color }}
             />
 
-            {/* Hover glow */}
-            <div
-              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
-              style={{
-                background: `radial-gradient(600px circle at 50% 0%, ${metric.color}15, transparent 70%)`,
-              }}
-            />
-
-            <div className="relative z-10">
-              <div className="flex items-start justify-between mb-3">
+            <div className="pl-3">
+              <div className="flex items-start justify-between mb-2">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)] mb-1 font-semibold">
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)] mb-0.5 font-medium">
                     {metric.label}
                   </p>
                   <p
-                    className="text-3xl font-bold tracking-tight transition-all duration-300 group-hover:scale-105 origin-left"
+                    className="text-2xl font-bold tracking-tight"
                     style={{ color: metric.color }}
                   >
                     {metric.value}
@@ -124,25 +105,19 @@ export default function MetricsCards({ data }: Props) {
                 </div>
 
                 <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:shadow-lg"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center"
                   style={{
-                    background: `${metric.color}18`,
+                    background: `${metric.color}12`,
                     color: metric.color,
                   }}
                 >
-                  <Icon size={17} />
+                  <Icon size={15} />
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-1.5 h-1.5 rounded-full transition-all duration-300 group-hover:scale-125"
-                  style={{ background: metric.color }}
-                />
-                <p className="text-[11px] text-[var(--text-secondary)]">
-                  {metric.subtitle}
-                </p>
-              </div>
+              <p className="text-[11px] text-[var(--text-secondary)]">
+                {metric.subtitle}
+              </p>
             </div>
           </div>
         );

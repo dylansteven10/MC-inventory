@@ -13,7 +13,11 @@ export const metadata: Metadata = {
   title: "MC Inventory",
 
   description:
-    "Multi Cloud Inventory Platform"
+    "Multi Cloud Inventory Platform",
+
+  icons: {
+    icon: "/favicon.png",
+  },
 
 };
 

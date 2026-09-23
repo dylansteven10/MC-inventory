@@ -5,40 +5,59 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 
-import { Boxes, BarChart3, Terminal, DollarSign, ShieldCheck, X } from "lucide-react";
+import { LayoutDashboard, Boxes, BarChart3, Server, Terminal, DollarSign, ShieldCheck, X } from "lucide-react";
 import BrandLogo from "@/components/layout/BrandLogo";
 import { hasPermission, type Permission } from "@/lib/auth/roles";
 
-const menuItems = [
+const menuSections = [
   {
-    label: "Inventario",
-    href: "/",
-    icon: Boxes,
-  },
-
-  {
-    label: "Monitoreo",
-    href: "/monitoreo",
-    icon: BarChart3,
-  },
-
-  {
-    label: "Comandos",
-    href: "/comandos",
-    icon: Terminal,
-    permission: "command:execute" as Permission,
-  },
-
-  {
-    label: "Billing",
-    href: "/billing",
-    icon: DollarSign,
+    items: [
+      {
+        label: "Dashboard",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+      },
+      {
+        label: "Inventario",
+        href: "/",
+        icon: Boxes,
+      },
+    ],
   },
   {
-    label: "Auditoría",
-    href: "/auditoria",
-    icon: ShieldCheck,
-    permission: "audit:view" as Permission,
+    items: [
+      {
+        label: "Monitoreo",
+        href: "/monitoreo",
+        icon: BarChart3,
+      },
+      {
+        label: "Servidores",
+        href: "/servidores",
+        icon: Server,
+      },
+    ],
+  },
+  {
+    items: [
+      {
+        label: "Comandos",
+        href: "/comandos",
+        icon: Terminal,
+        permission: "command:execute" as Permission,
+      },
+      {
+        label: "Billing",
+        href: "/billing",
+        icon: DollarSign,
+      },
+      {
+        label: "Auditoría",
+        href: "/auditoria",
+        icon: ShieldCheck,
+        permission: "audit:view" as Permission,
+      },
+    ],
   },
 ];
 
@@ -48,94 +67,42 @@ export default function Sidebar({
   onNavigate,
 }: {
   open: boolean;
-
   onClose: () => void;
-
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const visibleItems = menuItems.filter(
-    (item) => !item.permission || (session?.user?.role && hasPermission(session.user.role, item.permission)),
-  );
 
   return (
     <aside
       className={`
-
         fixed
         top-0
         left-0
-
         h-screen
         w-[280px]
-
         z-50
-
-        transition-all
+        transition-transform
         duration-300
-
+        ease-in-out
         flex
         flex-col
-
         border-r
         border-[var(--border)]
-
-        backdrop-blur-2xl
-
-        bg-[var(--bg-card)]/92
-
-        shadow-2xl
-
+        bg-[var(--bg-card)]
         ${open ? "translate-x-0" : "-translate-x-full"}
-
       `}
     >
-      {/* HEADER */}
 
-      <div
-        className="
-
-          h-16
-
-          border-b
-          border-[var(--border)]
-
-          flex
-          items-center
-          justify-between
-
-          px-5
-
-        "
-      >
+      <div className="h-14 border-b border-[var(--border)] flex items-center justify-between px-4">
         <div className="flex items-center gap-3">
           <BrandLogo />
-
           <div>
-            <p
-              className="
-
-                font-bold
-                text-[15px]
-
-                text-[var(--text-primary)]
-
-              "
-            >
+            <p className="font-semibold text-sm text-[var(--text-primary)]">
               MC Inventory
             </p>
-
-            <p
-              className="
-
-                text-xs
-
-                text-[var(--text-secondary)]
-
-              "
-            >
-              UX Technology | Multi Cloud Inventory
+            <p className="text-[11px] text-[var(--text-secondary)]">
+              UX Technology
             </p>
           </div>
         </div>
@@ -143,238 +110,81 @@ export default function Sidebar({
         <button
           onClick={onClose}
           className="
-
-            w-9
-            h-9
-
-            rounded-xl
-
-            border
-            border-[var(--border)]
-
-            bg-[var(--bg-hover)]/60
-
+            w-7
+            h-7
+            rounded-md
             flex
             items-center
             justify-center
-
-            hover:scale-105
-
+            text-[var(--text-secondary)]
+            hover:text-[var(--text-primary)]
+            hover:bg-[var(--bg-hover)]
             transition-all
-
-            interactive-button
-
           "
         >
-          <X size={16} className="text-[var(--text-secondary)]" />
+          <X size={14} />
         </button>
       </div>
 
-      {/* MENU */}
+      <div className="flex-1 py-3 overflow-y-auto">
+        {menuSections.map((section, si) => (
+          <div key={si}>
+            {si > 0 && (
+              <div className="mx-4 my-2 border-t border-[var(--border)]" />
+            )}
+            <div className="px-2 space-y-0.5">
+              {section.items
+                .filter((item) => !item.permission || (session?.user?.role && hasPermission(session.user.role, item.permission)))
+                .map((item) => {
+                  const Icon = item.icon;
+                  const active = pathname === item.href;
 
-      <div
-        className="
-
-          flex-1
-
-          p-4
-
-          space-y-2
-
-          overflow-y-auto
-
-        "
-      >
-        {visibleItems.map((item) => {
-          const Icon = item.icon;
-
-          const active = pathname === item.href;
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => {
-                if (!active) onNavigate?.();
-                onClose();
-              }}
-              className={`
-
-                group
-
-                relative
-
-                flex
-                items-center
-                gap-3
-
-                px-4
-                py-3
-
-                rounded-2xl
-
-                transition-all
-                duration-200
-
-                border
-
-                interactive-button
-
-                ${
-                  active
-                    ? `
-
-                      border-transparent
-
-                      text-[var(--text-primary)]
-
-                      shadow-lg
-
-                    `
-                    : `
-
-                      border-transparent
-
-                      text-[var(--text-secondary)]
-
-                      hover:text-[var(--text-primary)]
-
-                      hover:border-[var(--border)]
-
-                      hover:bg-[var(--bg-hover)]/70
-
-                    `
-                }
-
-              `}
-              style={
-                active
-                  ? {
-                      background: `linear-gradient(
-                          135deg,
-                          var(--gradient-start),
-                          var(--gradient-end)
-                        )`,
-                    }
-                  : {}
-              }
-            >
-              {/* ACTIVE GLOW */}
-
-              {active && (
-                <div
-                  className="
-
-                    absolute
-                    inset-0
-
-                    rounded-2xl
-
-                    opacity-20
-
-                  "
-                  style={{
-                    background: `linear-gradient(
-                        135deg,
-                        var(--gradient-secondary-start),
-                        var(--gradient-secondary-end)
-                      )`,
-                  }}
-                />
-              )}
-
-              <Icon size={18} className="relative z-10" />
-
-              <span
-                className="
-
-                  relative
-                  z-10
-
-                  font-medium
-                  text-sm
-
-                "
-              >
-                {item.label}
-              </span>
-            </Link>
-          );
-        })}
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => {
+                        if (!active) onNavigate?.();
+                        onClose();
+                      }}
+                      className={`
+                        relative
+                        flex
+                        items-center
+                        gap-3
+                        px-3
+                        py-2.5
+                        rounded-lg
+                        transition-all
+                        duration-150
+                        ${active
+                          ? "text-[var(--text-primary)] bg-[var(--bg-hover)]"
+                          : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]/50"
+                        }
+                      `}
+                    >
+                      {active && (
+                        <div
+                          className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-[var(--primary)]"
+                        />
+                      )}
+                      <Icon size={17} className={active ? "text-[var(--primary)]" : ""} />
+                      <span className="font-medium text-sm">{item.label}</span>
+                    </Link>
+                  );
+                })}
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* FOOTER */}
-
-      <div
-        className="
-
-          border-t
-          border-[var(--border)]
-
-          px-5
-          py-4
-
-        "
-      >
-        <div
-          className="
-
-            flex
-            items-center
-            justify-between
-
-          "
-        >
-          <div>
-            <p
-              className="
-
-                text-xs
-                font-semibold
-
-                text-[var(--text-primary)]
-
-              "
-            >
-              MC Inventory
-            </p>
-
-            <p
-              className="
-
-                text-[11px]
-
-                text-[var(--text-secondary)]
-
-              "
-            >
-              Enterprise FinOps Platform
-            </p>
-          </div>
-
-          <div
-            className="
-
-              px-2.5
-              py-1
-
-              rounded-lg
-
-              border
-              border-[var(--border)]
-
-              bg-[var(--bg-hover)]/70
-
-              text-[10px]
-              font-semibold
-
-              text-[var(--text-secondary)]
-
-            "
-          >
-            v9.0
-          </div>
-        </div>
+      <div className="border-t border-[var(--border)] px-4 py-3 flex items-center justify-between">
+        <p className="text-[11px] text-[var(--text-secondary)]">
+          MC Inventory
+        </p>
+        <span className="px-1.5 py-0.5 rounded text-[10px] text-[var(--text-secondary)] bg-[var(--bg-hover)]">
+          v10.0
+        </span>
       </div>
     </aside>
   );

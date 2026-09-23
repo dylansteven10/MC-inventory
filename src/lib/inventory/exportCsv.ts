@@ -4,7 +4,8 @@ import autoTable from "jspdf-autotable";
 
 import { InventoryItem } from "@/types/inventory";
 
-const UX_LOGO_PATH = "/branding/ux-technology-logo.png";
+const UX_LOGO_PATH = "/logo-dark.png";
+const UX_LOGO_LIGHT_PATH = "/logo-light.png";
 const UX_WEBSITE = "https://ux.technology/";
 
 const EXCEL_COLORS = {
@@ -101,9 +102,16 @@ function buildExportRows(rows: InventoryItem[]) {
   }));
 }
 
+type CustomColumnExport = {
+  id: string;
+  name: string;
+};
+
 export async function exportInventoryToExcel(
   rows: InventoryItem[],
   filename = "inventory-report.xlsx",
+  customColumns?: CustomColumnExport[],
+  customValueMap?: Map<string, string>,
 ): Promise<void> {
   const workbook = new ExcelJS.Workbook();
   const generatedAt = new Date();
@@ -159,14 +167,28 @@ export async function exportInventoryToExcel(
     logoId,
     "TableServiceSummary",
   );
+  const inventoryRows = buildExportRows(rows);
+  const customColNames = (customColumns || []).map((c) => c.name);
+  const allInventoryColumns = [...INVENTORY_COLUMNS, ...customColNames];
+  const allInventoryWidths = [14, 24, 18, 28, 20, 34, 27, 16, 28, 16, 16, 24, 18, 18, 24, 30, 28, 30, 46, 24, ...customColNames.map(() => 18)];
+
+  if (customColumns && customColumns.length > 0 && customValueMap) {
+    for (const record of inventoryRows) {
+      for (const cc of customColumns) {
+        const serverId = String(record["ID"] || "");
+        (record as Record<string, string | number>)[cc.name] = customValueMap.get(`${cc.id}::${serverId}`) || "";
+      }
+    }
+  }
+
   addExcelDataSheet(
     workbook,
     "Inventario",
     "UX Technology | Inventario detallado",
     "Detalle filtrado de recursos, red, estado y tags.",
-    buildExportRows(rows),
-    INVENTORY_COLUMNS,
-    [14, 24, 18, 28, 20, 34, 27, 16, 28, 16, 16, 24, 18, 18, 24, 30, 28, 30, 46, 24],
+    inventoryRows,
+    allInventoryColumns,
+    allInventoryWidths,
     logoId,
     "TableInventory",
   );
@@ -178,6 +200,8 @@ export async function exportInventoryToExcel(
 export async function exportInventoryToPDF(
   rows: InventoryItem[],
   filename = "inventory-report.pdf",
+  customColumns?: CustomColumnExport[],
+  customValueMap?: Map<string, string>,
 ): Promise<void> {
   const logoData = await loadImageData(UX_LOGO_PATH);
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
@@ -255,22 +279,37 @@ export async function exportInventoryToPDF(
     });
 
     cursor = getLastTableY(doc, cursor + 50) + 14;
+    const detailHead = ["Servicio", "Recurso", "ID", "Estado", "Zona / Host", "IP privada", "Tags", ...(customColumns || []).map((c) => c.name)];
+    const detailBody = [...account.rows]
+      .sort((a, b) => a.service.localeCompare(b.service) || a.name.localeCompare(b.name))
+      .map((row) => [
+        row.service,
+        row.name,
+        row.id,
+        row.status,
+        row.availabilityZone || row.host || "N/A",
+        row.privateIp || "N/A",
+        formatTagSummary(row.tags),
+        ...(customColumns || []).map((cc) => customValueMap?.get(`${cc.id}::${row.id}`) || ""),
+      ]);
+    const detailColStyles: Record<string, { cellWidth?: number }> = {
+      0: { cellWidth: 92 },
+      1: { cellWidth: 150 },
+      2: { cellWidth: 120 },
+      3: { cellWidth: 65 },
+      4: { cellWidth: 110 },
+      5: { cellWidth: 85 },
+      6: { cellWidth: 130 },
+    };
+    (customColumns || []).forEach((_, i) => {
+      detailColStyles[String(7 + i)] = { cellWidth: 80 };
+    });
     autoTable(doc, {
       startY: cursor,
-      head: [["Servicio", "Recurso", "ID", "Estado", "Zona / Host", "IP privada", "Tags"]],
-      body: [...account.rows]
-        .sort((a, b) => a.service.localeCompare(b.service) || a.name.localeCompare(b.name))
-        .map((row) => [
-          row.service,
-          row.name,
-          row.id,
-          row.status,
-          row.availabilityZone || row.host || "N/A",
-          row.privateIp || "N/A",
-          formatTagSummary(row.tags),
-        ]),
+      head: [detailHead],
+      body: detailBody,
       ...detailTableOptions(logoData),
-      columnStyles: { 0: { cellWidth: 92 }, 1: { cellWidth: 150 }, 2: { cellWidth: 120 }, 3: { cellWidth: 65 }, 4: { cellWidth: 110 }, 5: { cellWidth: 85 }, 6: { cellWidth: 130 } },
+      columnStyles: detailColStyles,
     });
     cursor = getLastTableY(doc, cursor) + 22;
   }

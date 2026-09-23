@@ -6,5 +6,6 @@ coverage
 .gitignore
 .env*
 data/*.json
+db/data
 *.log
 tsconfig.tsbuildinfo

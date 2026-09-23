@@ -1,31 +1,37 @@
 "use client";
 
-import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-const LOGO_PATH = "/branding/ux-technology-logo.png";
+const LOGO_DARK = "/logo-dark.png";
+const LOGO_LIGHT = "/logo-light.png";
 
-export default function BrandLogo() {
-  const [logoUnavailable, setLogoUnavailable] = useState(false);
+function useIsDark() {
+  const [dark, setDark] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    setDark(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setDark(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return dark;
+}
 
-  if (logoUnavailable) {
-    return (
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-sm font-bold text-white shadow-lg">
-        UX
-      </div>
-    );
-  }
+export default function BrandLogo({ size = 44 }: { size?: number }) {
+  const dark = useIsDark();
+  const src = dark ? LOGO_DARK : LOGO_LIGHT;
+  const w = size;
+  const h = Math.round(size * 80 / 150);
 
   return (
-    <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white p-1 shadow-lg">
-      <Image
-        src={LOGO_PATH}
-        alt="UX Technology"
-        fill
-        sizes="44px"
-        className="object-contain p-1"
-        onError={() => setLogoUnavailable(true)}
-      />
-    </div>
+    <img
+      src={src}
+      alt="UX Technology"
+      width={w}
+      height={h}
+      style={{ objectFit: "contain", display: "block" }}
+    />
   );
 }
+
+export { LOGO_DARK, LOGO_LIGHT };
