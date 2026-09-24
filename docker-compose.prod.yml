@@ -1,4 +1,8 @@
 services:
   postgres:
     volumes:
-      - /libre/devops/apps/database/data:/var/lib/postgresql/data
+      - type: bind
+        source: /libre/devops/apps/database/data
+        target: /var/lib/postgresql/data
+        bind:
+          create_host_path: false

@@ -2,8 +2,6 @@ import axios from "axios";
 
 import crypto from "crypto";
 
-import https from "https";
-
 type HuaweiRequestParams = {
 
   method: string;
@@ -118,14 +116,6 @@ ${hashedCanonicalRequest}`;
 
     };
 
-    const httpsAgent =
-      new https.Agent({
-
-        rejectUnauthorized:
-          false
-
-      });
-
     const response =
       await axios({
 
@@ -135,8 +125,6 @@ ${hashedCanonicalRequest}`;
           endpoint,
 
         headers,
-
-        httpsAgent,
 
         data:
           body,

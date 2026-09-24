@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { requireApiSession } from "@/lib/auth/server";
 import { queryAudit } from "@/lib/db/pool";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const guard = await requireApiSession("inventory:view", request);
+  if (guard.response) return guard.response;
+
   try {
     const result = await queryAudit(
       "SELECT id, name, position, created_at FROM server_columns ORDER BY position ASC"
@@ -16,6 +20,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requireApiSession("inventory:modify", request);
+  if (guard.response) return guard.response;
+
   try {
     const { name } = await request.json();
     if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -34,6 +41,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const guard = await requireApiSession("inventory:modify", request);
+  if (guard.response) return guard.response;
+
   try {
     const { id, name } = await request.json();
     if (!id || !name) {
@@ -53,6 +63,9 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const guard = await requireApiSession("inventory:modify", request);
+  if (guard.response) return guard.response;
+
   try {
     const { id } = await request.json();
     if (!id) {

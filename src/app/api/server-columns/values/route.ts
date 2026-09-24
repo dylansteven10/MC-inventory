@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { requireApiSession } from "@/lib/auth/server";
 import { queryAudit } from "@/lib/db/pool";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const guard = await requireApiSession("inventory:view", request);
+  if (guard.response) return guard.response;
+
   try {
     const result = await queryAudit(
       "SELECT id, column_id, server_id, value, created_at, updated_at FROM server_column_values ORDER BY updated_at DESC"
@@ -16,6 +20,9 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+  const guard = await requireApiSession("inventory:modify", request);
+  if (guard.response) return guard.response;
+
   try {
     const { columnId, serverId, value } = await request.json();
     if (!columnId || !serverId) {
@@ -36,6 +43,9 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const guard = await requireApiSession("inventory:modify", request);
+  if (guard.response) return guard.response;
+
   try {
     const { columnId, serverId } = await request.json();
     if (!columnId || !serverId) {

@@ -15,6 +15,7 @@ services:
       retries: 12
 
   app:
+    image: ${APP_IMAGE:-mc-inventory-app}
     build:
       context: .
       dockerfile: Dockerfile
@@ -22,6 +23,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://$$HOSTNAME:3000/api/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     env_file:
       - .env
       - .env.master.key

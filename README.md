@@ -149,12 +149,12 @@ Plataforma SaaS para centralizar y automatizar la gestion de inventario de infra
                        |
               +--------+--------+
               | postgres (5432) |  postgres:16-alpine
-              |  ./db/data      |  bind mount persistente
+              |  /libre/devops/apps/database/data |  bind mount persistente
               +-----------------+
 ```
 
 - **app**: imagen multi-stage (`Dockerfile`) con Next.js 16 en modo `standalone`. El `docker-entrypoint.sh` ejecuta `node /app/scripts/migrate.mjs` y **solo arranca si la migracion es exitosa**.
-- **postgres**: `postgres:16-alpine` con **bind mount** `./db/data` → `/var/lib/postgresql/data`. Los datos persisten en el host aunque se elimine el contenedor. Healthcheck con `pg_isready`.
+- **postgres**: `postgres:16-alpine` con **bind mount de produccion** `/libre/devops/apps/database/data` → `/var/lib/postgresql/data`. Los datos persisten en el host aunque se elimine el contenedor. En desarrollo local, `docker-compose.yml` usa `./db/data` por defecto.
 - Red privada de Compose. Postgres **no expone puertos al host**. `DATABASE_URL` se construye dentro del Compose como `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}`.
 - Healthcheck HTTP: `GET /api/health` → `{"status":"ok"}`.
 
@@ -303,7 +303,7 @@ Flujo para agregar/rotar una key:
 ```bash
 node scripts/secrets.mjs encrypt "AKIA..."     # → copiar el ENC:v1:...
 # pegar en .env como AWS_ACCOUNT_3_ACCESS_KEY=ENC:v1:...
-# recrear: docker compose up -d (o npm run dev en local)
+# recrear en produccion: ./scripts/deploy.sh (o npm run dev en local)
 ```
 
 > **Trampa de Docker Compose con `$`:** compose interpola `$VAR` incluso dentro del `.env`. El hash scrypt contiene `$`, asi que **en `.env` se guarda con `$$`**; compose lo desescapa a `$` dentro del contenedor. Los valores `ENC:v1:...` (base64) no contienen `$` y son seguros. `LOCAL_ADMIN_PASSWORD_HASH` **no** se lista en el bloque `environment:` del Compose: llega literal via `env_file`.
@@ -317,7 +317,7 @@ Tras migrar secretos que estuvieron en texto plano, **rotalos** en las consolas 
 Guia para un servidor **Amazon Linux 2023** con Docker, con el proyecto en la ruta fija:
 
 ```
-/libre/devops/apps/MC-Inventory/
+/libre/devops/apps/MC-inventory/
 ```
 
 ### 1. Requisitos del servidor
@@ -343,9 +343,9 @@ docker compose version
 ### 2. Ruta del proyecto y permisos
 
 ```bash
-sudo mkdir -p /libre/devops/apps/MC-Inventory
-sudo chown -R $USER:$USER /libre/devops/apps/MC-Inventory
-cd /libre/devops/apps/MC-Inventory
+sudo mkdir -p /libre/devops/apps/MC-inventory
+sudo chown -R $USER:$USER /libre/devops/apps/MC-inventory
+cd /libre/devops/apps/MC-inventory
 
 # Opcion A: clonar
 git clone <repository-url> .
@@ -375,7 +375,7 @@ Compose **requiere** un archivo `.env` junto al `docker-compose.yml` (no usa `.e
 Generar secretos en el servidor (no reutilizar los de desarrollo):
 
 ```bash
-cd /libre/devops/apps/MC-Inventory
+cd /libre/devops/apps/MC-inventory
 openssl rand -base64 32  # POSTGRES_PASSWORD (quitar :/@# si aparecen)
 node scripts/secrets.mjs generate-key  # CREDENTIALS_MASTER_KEY → guardar en .env.master.key
 ```
@@ -398,21 +398,32 @@ node scripts/secrets.mjs hash-password "<password-admin>"
 
 ### 4. Arranque
 
+En produccion se debe usar siempre el override `docker-compose.prod.yml`, que fija el volumen PostgreSQL en `/libre/devops/apps/database/data/`:
+
 ```bash
-cd /libre/devops/apps/MC-Inventory
-docker compose config   # valida que no falte ninguna variable :? requerida
-docker compose up --build -d
-docker compose ps
-docker logs -f mc-inventory-app-1        # debe mostrar: Applied migration ... + Ready
-docker logs -f mc-inventory-postgres-1
-curl -s http://127.0.0.1:3000/api/health  # {"status":"ok"}
+cd /libre/devops/apps/MC-inventory
+export COMPOSE_PROJECT_NAME=mc-inventory
+COMPOSE="docker compose --project-name mc-inventory -f docker-compose.yml -f docker-compose.prod.yml"
+
+# Valida la configuracion sin imprimir secretos
+$COMPOSE config --quiet
+
+# Construye la imagen de app y levanta ambos servicios
+# El comando directo evita depender de una version antigua de buildx en servidores.
+docker build --pull -t mc-inventory-app:latest .
+$COMPOSE up -d --no-build
+$COMPOSE ps
+$COMPOSE logs --tail 200 -f app
+curl -fsS http://127.0.0.1:3000/api/health  # {"status":"ok"}
 ```
+
+Para el primer arranque, el directorio `/libre/devops/apps/database/data/` debe existir. Si se esta trasladando una base desde otro volumen o backup, validar el restore **antes** de iniciar la app. No borrar nunca el directorio de datos.
 
 Verificar BD y migracion:
 
 ```bash
-docker exec -it mc-inventory-postgres-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '\dt'
-docker exec -it mc-inventory-postgres-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c 'SELECT name, applied_at FROM schema_migrations;'
+$COMPOSE exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\\dt"'
+$COMPOSE exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT name, applied_at FROM schema_migrations ORDER BY name;"'
 ```
 
 Si el log de `app` muestra `Database migration failed`, el contenedor no arranca (por diseno). Revisa credenciales `POSTGRES_*`, conectividad y `DATABASE_SSL`.
@@ -444,68 +455,101 @@ server {
 }
 ```
 
-Tras cambiar `NEXTAUTH_URL`, recrear: `docker compose up -d`.
+Tras cambiar `NEXTAUTH_URL`, recrear la app con el override de produccion: `docker compose --project-name mc-inventory -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build --no-deps --force-recreate app`.
 
-### 6. Operacion diaria
+### 6. Operacion diaria y actualizaciones
 
-La BD vive en el **bind mount** `./db/data/` del host, mapeado a `/var/lib/postgresql/data` dentro del contenedor postgres.
+En produccion la BD vive en el **bind mount** `/libre/devops/apps/database/data/` del host, mapeado a `/var/lib/postgresql/data` dentro del contenedor postgres. El override `docker-compose.prod.yml` es obligatorio; `docker-compose.yml` sin el override usa `./db/data/` para desarrollo local.
 
 **Persistencia de datos:**
-- `docker compose down` **conserva** los datos en `./db/data/` (bind mount en el host).
-- Solo se pierden si **borras manualmente** `./db/data/` o usas `rm -rf db/data`.
-- Los contenedores se pueden eliminar y recrear sin perder datos.
+- `docker compose down` conserva los datos del bind mount.
+- Eliminar o recrear el contenedor `app` no toca PostgreSQL.
+- No usar `docker compose down -v`, `docker volume rm` ni `rm -rf /libre/devops/apps/database/data/`.
+
+#### Validar el volumen persistente
 
 ```bash
-cd /libre/devops/apps/MC-Inventory
-docker compose ps
-docker compose logs --tail 200 app
-docker compose restart app      # solo app, la BD sigue corriendo
-
-# Verificar persistencia (datos en el host):
-ls -la db/data/                 # debe mostrar archivos de PostgreSQL
-du -sh db/data/                 # tamano de la BD en disco
+cd /libre/devops/apps/MC-inventory
+./scripts/deploy.sh --check
 ```
 
-Actualizacion de version (solo app, la BD no se detiene ni pierde registros):
+El script comprueba que el contenedor este `healthy`, que el mount apunte exactamente a `/libre/devops/apps/database/data/` y que la version sea PostgreSQL 16. Para una comprobacion manual:
 
 ```bash
-cd /libre/devops/apps/MC-Inventory
-git pull
-docker compose up --build -d app
-docker logs -f mc-inventory-app-1   # esperar "Ready"; la migracion corre sola
-# Rollback: git checkout <tag-anterior> && docker compose up --build -d app
+docker inspect mc-inventory-postgres-1 \
+  --format '{{range .Mounts}}{{println .Type .Source "->" .Destination}}{{end}}'
+docker exec mc-inventory-postgres-1 cat /var/lib/postgresql/data/PG_VERSION
+du -sh /libre/devops/apps/database/data
 ```
 
-> Si necesitas detener todo: `docker compose down` (conserva `./db/data/`).
-> **Nunca** uses `rm -rf db/data/` en produccion sin backup previo.
+El resultado esperado es `bind /libre/devops/apps/database/data -> /var/lib/postgresql/data` y `16`.
+
+#### Actualizar solo la aplicacion (procedimiento recomendado)
+
+```bash
+cd /libre/devops/apps/MC-inventory
+git pull --ff-only
+./scripts/deploy.sh
+```
+
+O en un solo paso:
+
+```bash
+./scripts/deploy.sh --pull
+```
+
+El script valida PostgreSQL, crea un dump logico en `/libre/devops/backups/`, construye la imagen de `app`, ejecuta `up -d --no-deps --force-recreate app` y espera `/api/health`. No reconstruye, elimina ni reinicia el contenedor de PostgreSQL. La migracion SQL se ejecuta automaticamente al arrancar la nueva app y el script comprueba que el ID del contenedor PostgreSQL no haya cambiado.
+
+#### Equivalente manual
+
+```bash
+cd /libre/devops/apps/MC-inventory
+git pull --ff-only
+docker build --pull -t mc-inventory-app:latest .
+docker compose --project-name mc-inventory \
+  -f docker-compose.yml -f docker-compose.prod.yml \
+  up -d --no-build --no-deps --force-recreate app
+docker compose --project-name mc-inventory \
+  -f docker-compose.yml -f docker-compose.prod.yml \
+  logs -f app
+```
+
+No usar `docker compose down` como paso de la actualizacion. Si se detiene todo, `docker compose down` conserva el bind mount, pero el script de actualizacion es mas seguro porque no detiene PostgreSQL.
+
+> **Nunca** borrar `/libre/devops/apps/database/data/` sin un backup verificado.
+> Si se migra desde el volumen Docker antiguo `mc-inventory_postgres_data`, conservar ese volumen hasta validar el restore; no eliminarlo durante la transicion.
 
 ### 7. Backups
 
 Dump logico (recomendado, programar en cron diario):
 
 ```bash
+cd /libre/devops/apps/MC-inventory
+COMPOSE="docker compose --project-name mc-inventory -f docker-compose.yml -f docker-compose.prod.yml"
 sudo mkdir -p /libre/devops/backups
-docker exec mc-inventory-postgres-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc \
+$COMPOSE exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
   > /libre/devops/backups/mc-inventory-$(date +%F).dump
 ```
 
-Restaurar:
+Restaurar (con backup verificado y ventana de mantenimiento):
 
 ```bash
-cat backup.dump | docker exec -i mc-inventory-postgres-1 pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean
+cat /ruta/al/backup.dump | $COMPOSE exec -T postgres sh -c \
+  'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean'
 ```
 
 Cron diario (02:30) con limpieza de dumps > 7 dias:
 
 ```bash
 crontab -e
-# 30 2 * * * cd /libre/devops/apps/MC-Inventory && set -a && . ./.env && set +a && docker exec mc-inventory-postgres-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc > /libre/devops/backups/mc-inventory-$(date +\%F).dump && find /libre/devops/backups -name 'mc-inventory-*.dump' -mtime +7 -delete
+# 30 2 * * * cd /libre/devops/apps/MC-inventory && mkdir -p /libre/devops/backups && docker compose --project-name mc-inventory -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > /libre/devops/backups/mc-inventory-$(date +\%F).dump && find /libre/devops/backups -name 'mc-inventory-*.dump' -mtime +7 -delete
 ```
 
-Verificar un backup sin restaurar:
+Verificar un backup sin restaurar (no requiere `pg_restore` instalado en el host):
 
 ```bash
-pg_restore --list /libre/devops/backups/mc-inventory-2026-01-01.dump | grep -c "TABLE DATA"
+docker run --rm -v /libre/devops/backups:/backup:ro postgres:16-alpine \
+  pg_restore --list /backup/mc-inventory-YYYY-MM-DD.dump | grep -c "TABLE DATA"
 ```
 
 Retencion sugerida: 7 diarios + 4 semanales, fuera del host (S3). Probar restore al menos una vez.
@@ -513,6 +557,8 @@ Retencion sugerida: 7 diarios + 4 semanales, fuera del host (S3). Probar restore
 ### 8. Endurecimiento y checklist pre-produccion
 
 - [ ] `.env` con `chmod 600`, propietario correcto, fuera de Git y respaldado en Secrets Manager/SSM.
+- [ ] `ALLOWED_USERS` o `AZURE_AD_ALLOWED_DOMAIN` configurados; en produccion no se permite Azure AD abierto.
+- [ ] `LOCAL_ADMIN_PASSWORD` eliminado despues de migrar a `LOCAL_ADMIN_PASSWORD_HASH`; rotar secretos expuestos.
 - [ ] `NEXTAUTH_URL` https publica, `NEXTAUTH_SECRET` y `AUDIT_HASH_SECRET` fuertes y distintos.
 - [ ] `POSTGRES_PASSWORD` fuerte, sin caracteres que rompan la URL.
 - [ ] `DATABASE_SSL=disable` solo con postgres de Compose en red privada; `require` + CA si es RDS/TLS.
@@ -523,25 +569,25 @@ Retencion sugerida: 7 diarios + 4 semanales, fuera del host (S3). Probar restore
 - [ ] Espacio en disco monitorizado; `data/*.json` es cache local efimero, no respaldo.
 - [ ] Rotacion de secretos definida; `AUDIT_HASH_SECRET` solo en ventana de mantenimiento.
 - [ ] Acceso SSH con key, sin password; usuarios minimos.
-- [ ] Bind mount `./db/data/` con permisos adecuados (postgres necesita ownership del directorio).
+- [ ] Bind mount `/libre/devops/apps/database/data/` con permisos adecuados (postgres necesita ownership del directorio).
 - [ ] Backup de BD verificado y cron programado.
 
 ### 9. Troubleshooting
 
 | Sintoma | Causa probable / solucion |
 |---|---|
-| `POSTGRES_* is required` al hacer `config/up` | Falta variable en `.env` o `.env` en otra ruta. Validar con `docker compose config` |
+| `POSTGRES_* is required` al hacer `config/up` | Falta variable en `.env` o `.env` en otra ruta. Validar con `docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet` |
 | `permission denied` con docker | Falta `usermod -aG docker`, re-login SSH, o usar `sudo` |
 | `port 3000 already in use` | Otro proceso/contenedor. `ss -tlnp \| grep 3000`, cambiar `APP_PORT` o detener el otro servicio |
-| App en loop / `migration failed` | Credenciales PG, `DATABASE_SSL` incorrecto, o migracion SQL con error. Ver `docker logs app` |
+| App en loop / `migration failed` | Credenciales PG, `DATABASE_SSL` incorrecto, o migracion SQL con error. Ver `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail 200 app` |
 | `CREDENTIALS_MASTER_KEY no configurada` | Falta `.env.master.key` junto al compose. Generar con `node scripts/secrets.mjs generate-key` |
 | Warnings `variable "..." is not set` con `docker compose up` | Un valor del `.env` contiene `$` sin escapar (tipico: hash scrypt). Usar `$$` en `LOCAL_ADMIN_PASSWORD_HASH` |
 | Login redirige a localhost | `NEXTAUTH_URL` sigue en `http://localhost:3000`. Poner la URL publica y recrear |
 | `audit_events is append-only` | Normal: la tabla es solo-apendice por trigger |
 | Disco lleno | `docker system df`, `docker image prune`, podar logs, ampliar EBS |
-| `Conflict. The container name ... is already in use` | Contenedor huerfano. `docker ps -a`, `docker rm -f <nombre>` y repetir `docker compose up -d` |
-| Postgres no arranca / `data directory has wrong ownership` | Permisos del bind mount. `sudo chown -R 999:999 ./db/data` (uid de postgres en alpine) o eliminar y recrear: `rm -rf db/data && docker compose up -d` |
-| Tras `down`, ¿se pierden los registros? | No, los datos estan en `./db/data/` (bind mount). Verificar: `ls -la db/data/` |
+| `Conflict. The container name ... is already in use` | Contenedor huerfano. Verificar el proyecto y ejecutar el comando de update de este README; no usar `docker compose down -v` |
+| Postgres no arranca / `data directory has wrong ownership` | Permisos del bind mount de produccion. No borrar datos: `sudo chown -R 70:70 /libre/devops/apps/database/data` (UID/GID de postgres en `postgres:16-alpine`) y volver a validar. |
+| Tras `down`, ¿se pierden los registros? | No, los datos estan en `/libre/devops/apps/database/data/` (bind mount). Verificar: `du -sh /libre/devops/apps/database/data` |
 
 ---
 

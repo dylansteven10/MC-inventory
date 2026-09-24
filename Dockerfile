@@ -26,7 +26,7 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/db ./db
 COPY --from=builder /app/scripts/migrate.mjs ./scripts/migrate.mjs
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod 755 ./docker-entrypoint.sh && chown -R nextjs:nodejs /app
+RUN chmod 755 ./docker-entrypoint.sh && mkdir -p /app/data && chown -R nextjs:nodejs /app
 
 USER nextjs
 EXPOSE 3000

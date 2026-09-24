@@ -1,20 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 const LOGO_DARK = "/logo-dark.png";
 const LOGO_LIGHT = "/logo-light.png";
 
+function subscribeToColorScheme(callback: () => void) {
+  const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  mediaQuery.addEventListener("change", callback);
+  return () => mediaQuery.removeEventListener("change", callback);
+}
+
+function getColorSchemeSnapshot() {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function getServerColorSchemeSnapshot() {
+  return true;
+}
+
 function useIsDark() {
-  const [dark, setDark] = useState(true);
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    setDark(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setDark(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return dark;
+  return useSyncExternalStore(
+    subscribeToColorScheme,
+    getColorSchemeSnapshot,
+    getServerColorSchemeSnapshot,
+  );
 }
 
 export default function BrandLogo({ size = 44 }: { size?: number }) {

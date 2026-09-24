@@ -12,14 +12,15 @@ interface AlertMessage {
 }
 
 function getAuthAlert(error: string | undefined | null, username: string): AlertMessage {
-  if (!username.trim()) return { type: "warning", title: "Campo requerido", body: "Por favor ingresa tu nombre de usuario antes de continuar." };
   switch (error) {
     case "CredentialsSignin": return { type: "error", title: "Credenciales incorrectas", body: "El usuario o la contraseña no son válidos. Verifica e intenta de nuevo." };
     case "SessionRequired": return { type: "warning", title: "Sesión requerida", body: "Debes iniciar sesión para acceder a esta sección." };
-    case "AccessDenied": return { type: "error", title: "Acceso denegado", body: "Tu cuenta no tiene permisos. Contacta al administrador." };
+    case "AccessDenied": return { type: "warning", title: "Acceso denegado", body: "Tu cuenta no tiene permisos. Contacta a un administrador." };
     case "OAuthAccountNotLinked": return { type: "warning", title: "Cuenta no vinculada", body: "Ya existe una cuenta con ese correo con otro método de inicio." };
-    default: return { type: "error", title: "Error de autenticación", body: "No se pudo completar el inicio de sesión. Intenta de nuevo." };
   }
+
+  if (!username.trim()) return { type: "warning", title: "Campo requerido", body: "Por favor ingresa tu nombre de usuario antes de continuar." };
+  return { type: "error", title: "Error de autenticación", body: "No se pudo completar el inicio de sesión. Intenta de nuevo." };
 }
 
 function Alert({ alert, onClose }: { alert: AlertMessage; onClose: () => void }) {
@@ -68,7 +69,13 @@ export default function LoginPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const error = params.get("error");
-    if (error) { setAlert(getAuthAlert(error, "")); window.history.replaceState({}, "", "/login"); }
+    if (!error) return;
+
+    window.history.replaceState({}, "", "/login");
+    const timer = window.setTimeout(() => {
+      setAlert(getAuthAlert(error, ""));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
   useEffect(() => { if (!alert) return; const t = setTimeout(() => setAlert(null), 6000); return () => clearTimeout(t); }, [alert]);
 

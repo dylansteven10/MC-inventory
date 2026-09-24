@@ -34,9 +34,22 @@ function buildEnvGroupRoleMap(): GroupRoleMap {
 }
 
 function isAllowedEmail(email?: string | null) {
+  const normalizedEmail = email?.trim().toLowerCase() || "";
   const allowedUsers = parseCsv(process.env.ALLOWED_USERS);
-  if (allowedUsers.length === 0) return true;
-  return !!email && allowedUsers.includes(email.toLowerCase());
+  if (allowedUsers.length > 0) {
+    return allowedUsers.includes(normalizedEmail);
+  }
+
+  // En produccion no se permite el acceso Azure AD abierto por defecto.
+  // Si no hay allowlist, se exige al menos el dominio autorizado.
+  const allowedDomain = (process.env.AZURE_AD_ALLOWED_DOMAIN || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, "");
+  if (!allowedDomain) return process.env.NODE_ENV !== "production";
+
+  const domain = normalizedEmail.split("@")[1] || "";
+  return domain === allowedDomain;
 }
 
 function getUserRole(email?: string | null, groups: string[] = []): Role {
@@ -222,7 +235,10 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
   callbacks: {
-    async signIn({ user, profile }) {
+    async signIn({ user, profile, account }) {
+      // El login local ya valida usuario y password contra el hash configurado.
+      if (account?.provider === "credentials") return true;
+
       const email = getProfileEmail(profile, user.email);
       return isAllowedEmail(email);
     },

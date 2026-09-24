@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { requireApiSession } from "@/lib/auth/server";
 import { queryAudit } from "@/lib/db/pool";
 
 export const dynamic = "force-dynamic";
 
 export async function PUT(request: NextRequest) {
+  const guard = await requireApiSession("inventory:modify", request);
+  if (guard.response) return guard.response;
+
   try {
     const { columns } = await request.json();
     if (!Array.isArray(columns) || columns.length === 0) {
