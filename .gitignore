@@ -45,3 +45,6 @@ next-env.d.ts
 
 # local cache data (tracked files remain tracked)
 /data
+
+# postgres data volume (persisted externally)
+/db/data
