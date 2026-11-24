@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 
-import { LayoutDashboard, Boxes, BarChart3, Server, Archive, Terminal, DollarSign, ShieldCheck, X, FileBarChart, Database } from "lucide-react";
+import { LayoutDashboard, Boxes, BarChart3, Server, Archive, Terminal, DollarSign, ShieldCheck, X, FileBarChart, Database, BookOpen, RotateCcw, Settings } from "lucide-react";
 import BrandLogo from "@/components/layout/BrandLogo";
 import { hasPermission, type Permission } from "@/lib/auth/roles";
 
@@ -51,6 +51,16 @@ const menuSections = [
         href: "/informes",
         icon: FileBarChart,
       },
+      {
+        label: "Bitácora",
+        href: "/bitacora",
+        icon: BookOpen,
+      },
+      {
+        label: "Restauración",
+        href: "/restauracion",
+        icon: RotateCcw,
+      },
     ],
   },
   {
@@ -71,6 +81,12 @@ const menuSections = [
         href: "/auditoria",
         icon: ShieldCheck,
         permission: "audit:view" as Permission,
+      },
+      {
+        label: "Configuración",
+        href: "/configuracion",
+        icon: Settings,
+        permission: "inventory:modify" as Permission,
       },
     ],
   },

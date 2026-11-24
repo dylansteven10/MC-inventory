@@ -19,6 +19,7 @@ const PAGE_NAMES: Record<string, string> = {
   "/bases-de-datos": "Bases de datos",
   "/backups": "Backups",
   "/informes": "Informes",
+  "/restauracion": "Restauración",
   "/comandos": "Comandos",
   "/billing": "Billing",
   "/auditoria": "Auditoría",

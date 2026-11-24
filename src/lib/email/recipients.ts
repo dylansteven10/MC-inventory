@@ -6,11 +6,14 @@ export type InformeRecipient = {
   email: string;
   name: string | null;
   active: boolean;
+  reportType: string | null; // null = all types, "servers"|"rds"|"logs"|"vaults" = specific
   createdBy: string | null;
   createdAt: string;
 };
 
 export type RecipientsSource = "db" | "env" | "none";
+
+export type ReportType = "servers" | "rds" | "logs" | "vaults";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -28,27 +31,42 @@ function toRecipient(row: any): InformeRecipient {
     email: row.email,
     name: row.name || null,
     active: !!row.active,
+    reportType: row.report_type || null,
     createdBy: row.created_by || null,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : "",
   };
 }
 
-export async function listRecipients(): Promise<InformeRecipient[]> {
+export async function listRecipients(reportType?: ReportType | null): Promise<InformeRecipient[]> {
+  if (reportType) {
+    // List recipients for a specific report type:
+    // those with report_type = the specific type + those with report_type = NULL (applies to all)
+    const res = await queryAudit(
+      `SELECT id, email, name, active, report_type, created_by, created_at
+       FROM informe_recipients
+       WHERE report_type = $1 OR report_type IS NULL
+       ORDER BY active DESC, report_type NULLS FIRST, email ASC`,
+      [reportType],
+    );
+    return res.rows.map(toRecipient);
+  }
+  // List all recipients (no filter)
   const res = await queryAudit(
-    `SELECT id, email, name, active, created_by, created_at FROM informe_recipients ORDER BY active DESC, email ASC`,
+    `SELECT id, email, name, active, report_type, created_by, created_at FROM informe_recipients ORDER BY active DESC, report_type NULLS FIRST, email ASC`,
   );
   return res.rows.map(toRecipient);
 }
 
-export async function addRecipient(email: string, name?: string, createdBy?: string): Promise<InformeRecipient> {
+export async function addRecipient(email: string, name?: string, createdBy?: string, reportType?: ReportType | null): Promise<InformeRecipient> {
   const clean = normalizeEmail(email);
   if (!isValidEmail(clean)) throw new Error("INVALID_EMAIL");
+  const rt = reportType || null; // null = applies to all types
   const res = await queryAudit(
-    `INSERT INTO informe_recipients (email, name, active, created_by)
-     VALUES ($1, $2, true, $3)
-     ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, active = true, created_by = EXCLUDED.created_by
-     RETURNING id, email, name, active, created_by, created_at`,
-    [clean, (name || "").trim().slice(0, 200) || null, (createdBy || "").slice(0, 320) || null],
+    `INSERT INTO informe_recipients (email, name, active, created_by, report_type)
+     VALUES ($1, $2, true, $3, $4)
+     ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, active = true, created_by = EXCLUDED.created_by, report_type = EXCLUDED.report_type
+     RETURNING id, email, name, active, report_type, created_by, created_at`,
+    [clean, (name || "").trim().slice(0, 200) || null, (createdBy || "").slice(0, 320) || null, rt],
   );
   return toRecipient(res.rows[0]);
 }
@@ -61,7 +79,7 @@ export async function removeRecipient(id: string): Promise<boolean> {
 export async function setRecipientActive(id: string, active: boolean): Promise<InformeRecipient | null> {
   const res = await queryAudit(
     `UPDATE informe_recipients SET active = $2 WHERE id = $1
-     RETURNING id, email, name, active, created_by, created_at`,
+     RETURNING id, email, name, active, report_type, created_by, created_at`,
     [id, active],
   );
   return res.rows[0] ? toRecipient(res.rows[0]) : null;
@@ -78,13 +96,13 @@ function envRecipients(): string[] {
 }
 
 /**
- * Destinatarios efectivos: los activos de la BD tienen prioridad.
- * Si la BD no tiene ninguno (o no responde), se usa SENDGRID_RECIPIENTS
- * en texto plano como respaldo. Nunca lanza.
+ * Destinatarios efectivos para un tipo de informe específico:
+ * 1. BD recipients where report_type = the specific type OR report_type IS NULL (all types)
+ * 2. Si no hay ninguno en BD, se usa SENDGRID_RECIPIENTS como respaldo.
  */
-export async function getEffectiveRecipients(): Promise<{ emails: string[]; source: RecipientsSource }> {
+export async function getEffectiveRecipients(reportType?: ReportType): Promise<{ emails: string[]; source: RecipientsSource }> {
   try {
-    const all = await listRecipients();
+    const all = await listRecipients(reportType || null);
     const active = all.filter((r) => r.active).map((r) => r.email);
     if (active.length > 0) return { emails: active, source: "db" };
   } catch {

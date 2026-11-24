@@ -746,7 +746,7 @@ function getOverviewFields(item: InventoryItem): FieldDef[] {
   if (simpleServices.includes(s)) {
     return [
       ...base,
-      { label: "Región", value: item.availabilityZone },
+      { label: "Región", value: item.region || item.availabilityZone },
     ];
   }
 
@@ -766,7 +766,7 @@ function getOverviewFields(item: InventoryItem): FieldDef[] {
       { label: "Función", value: item.host },
       { label: "Runtime", value: item.operatingSystem },
       { label: "Memoria", value: item.instanceType },
-      { label: "Región", value: item.availabilityZone },
+      { label: "Región", value: item.region || item.availabilityZone },
       { label: "Última modificación", value: item.launchTime },
     ];
   }
@@ -776,7 +776,7 @@ function getOverviewFields(item: InventoryItem): FieldDef[] {
       ...base,
       { label: "Endpoint", value: item.host },
       { label: "Versión K8s", value: item.operatingSystem },
-      { label: "Región", value: item.availabilityZone },
+      { label: "Región", value: item.region || item.availabilityZone },
       { label: "Fecha creación", value: item.launchTime },
     ];
   }
@@ -787,7 +787,7 @@ function getOverviewFields(item: InventoryItem): FieldDef[] {
       { label: "Endpoint", value: item.host },
       { label: "Plataforma", value: item.operatingSystem },
       { label: "Lanzamiento", value: item.instanceType },
-      { label: "Región", value: item.availabilityZone },
+      { label: "Región", value: item.region || item.availabilityZone },
       { label: "Fecha creación", value: item.launchTime },
     ];
   }
@@ -819,7 +819,7 @@ function getOverviewFields(item: InventoryItem): FieldDef[] {
       ...base,
       { label: "Dominio", value: item.host },
       { label: "Distribución", value: item.operatingSystem },
-      { label: "Región", value: item.availabilityZone },
+      { label: "Región", value: item.region || item.availabilityZone },
       { label: "Fecha creación", value: item.launchTime },
     ];
   }
@@ -830,7 +830,7 @@ function getOverviewFields(item: InventoryItem): FieldDef[] {
       { label: "Endpoint", value: item.host },
       { label: "Red", value: item.operatingSystem },
       { label: "Flavor", value: item.instanceType },
-      { label: "Región", value: item.availabilityZone },
+      { label: "Región", value: item.region || item.availabilityZone },
       { label: "Fecha creación", value: item.launchTime },
     ];
   }
@@ -840,7 +840,7 @@ function getOverviewFields(item: InventoryItem): FieldDef[] {
       ...base,
       { label: "Dominio", value: item.host },
       { label: "Área", value: item.operatingSystem },
-      { label: "Región", value: item.availabilityZone },
+      { label: "Región", value: item.region || item.availabilityZone },
       { label: "Fecha creación", value: item.launchTime },
     ];
   }
@@ -849,7 +849,7 @@ function getOverviewFields(item: InventoryItem): FieldDef[] {
     return [
       ...base,
       { label: "CIDR", value: item.host },
-      { label: "Región", value: item.availabilityZone },
+      { label: "Región", value: item.region || item.availabilityZone },
     ];
   }
 

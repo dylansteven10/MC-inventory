@@ -46,10 +46,14 @@ function toRdsRecord(row: any): RdsBackupRecord {
 
 export async function upsertRdsBackups(records: any[]): Promise<number> {
   if (records.length === 0) return 0;
+  // Deduplicar por UNIQUE constraint (provider, account_id, snapshot_id)
+  const seen = new Map<string, any>();
+  for (const r of records) seen.set(`${r.provider}::${r.accountId}::${r.snapshotId}`, r);
+  const deduped = [...seen.values()];
   const CHUNK = 500;
   let total = 0;
-  for (let start = 0; start < records.length; start += CHUNK) {
-    const chunk = records.slice(start, start + CHUNK);
+  for (let start = 0; start < deduped.length; start += CHUNK) {
+    const chunk = deduped.slice(start, start + CHUNK);
     const values: unknown[] = [];
     const rows = chunk.map((r, i) => {
       const o = i * 15;
@@ -200,10 +204,14 @@ function toLogRecord(row: any): LogBackupRecord {
 
 export async function upsertLogBackups(records: any[]): Promise<number> {
   if (records.length === 0) return 0;
+  // Deduplicar por UNIQUE constraint (provider, account_id, bucket_name, backup_date, server_name)
+  const seen = new Map<string, any>();
+  for (const r of records) seen.set(`${r.provider}::${r.accountId}::${r.bucketName}::${r.backupDate}::${r.serverName}`, r);
+  const deduped = [...seen.values()];
   const CHUNK = 500;
   let total = 0;
-  for (let start = 0; start < records.length; start += CHUNK) {
-    const chunk = records.slice(start, start + CHUNK);
+  for (let start = 0; start < deduped.length; start += CHUNK) {
+    const chunk = deduped.slice(start, start + CHUNK);
     const values: unknown[] = [];
     const rows = chunk.map((r: any, i: number) => {
       const o = i * 11;
@@ -233,6 +241,27 @@ export async function upsertLogBackups(records: any[]): Promise<number> {
     total += res.rowCount || 0;
   }
   return total;
+}
+
+/**
+ * Clean up stale "(sin carpetas)" entries where actual server folders exist
+ * for the same (provider, account_id, bucket_name, backup_date).
+ * Should be called after upsertLogBackups.
+ */
+export async function cleanupSinCarpetas(): Promise<number> {
+  const res = await queryAudit(
+    `DELETE FROM log_backups
+     WHERE server_name = '(sin carpetas)'
+       AND EXISTS (
+         SELECT 1 FROM log_backups lb2
+         WHERE lb2.provider = log_backups.provider
+           AND lb2.account_id = log_backups.account_id
+           AND lb2.bucket_name = log_backups.bucket_name
+           AND lb2.backup_date = log_backups.backup_date
+           AND lb2.server_name != '(sin carpetas)'
+       )`,
+  );
+  return res.rowCount || 0;
 }
 
 export type LogBackupFilters = {
@@ -300,4 +329,236 @@ export async function getLogBackupSummary(): Promise<{
     byDate: dateRes.rows,
     totalBytes: Number(bytesRes.rows[0]?.bytes || 0),
   };
+}
+
+// ── Vault Capacity ──
+
+export type VaultCapacityRow = {
+  provider: string;
+  accountId: string;
+  accountName: string;
+  region: string;
+  vaultId: string;
+  vaultName: string;
+  usedBytes: number;
+  capacityBytes: number;
+  usedPercent: number;
+  collectedAt: string;
+};
+
+export async function upsertVaultCapacity(records: any[]): Promise<number> {
+  // Marcar timestamp antes del upsert para limpieza de vaults eliminados
+  const beforeTs = new Date();
+
+  if (records.length > 0) {
+    // Deduplicar por UNIQUE constraint (provider, account_id, vault_id)
+    const seen = new Map<string, any>();
+    for (const r of records) seen.set(`${r.provider}::${r.accountId}::${r.vaultId}`, r);
+    const unique = [...seen.values()];
+    const values: unknown[] = [];
+    const rows = unique.map((r, i) => {
+      const o = i * 8;
+      values.push(
+        r.provider, r.accountId, r.accountName, r.region,
+        r.vaultId, r.vaultName, r.usedBytes, r.capacityBytes,
+      );
+      const ph = Array.from({ length: 8 }, (_, k) => `$${o + k + 1}`).join(", ");
+      return `(${ph})`;
+    });
+    await queryAudit(
+      `INSERT INTO vault_capacity
+        (provider, account_id, account_name, region, vault_id, vault_name, used_bytes, capacity_bytes)
+       VALUES ${rows.join(", ")}
+       ON CONFLICT (provider, account_id, vault_id) DO UPDATE SET
+         account_name = EXCLUDED.account_name,
+         region = EXCLUDED.region,
+         vault_name = EXCLUDED.vault_name,
+         used_bytes = EXCLUDED.used_bytes,
+         capacity_bytes = EXCLUDED.capacity_bytes,
+         used_percent = CASE WHEN EXCLUDED.capacity_bytes > 0 THEN ROUND((EXCLUDED.used_bytes::numeric / EXCLUDED.capacity_bytes) * 10000) / 100 ELSE 0 END,
+         collected_at = now()`,
+      values,
+    );
+  }
+
+  // ── Limpiar vaults eliminados: los que no fueron actualizados en este run ──
+  // Cualquier vault con collected_at anterior al inicio de este upsert ya no existe en la API
+  const delRes = await queryAudit(
+    `DELETE FROM vault_capacity WHERE collected_at < $1`,
+    [beforeTs.toISOString()],
+  );
+  if (delRes.rowCount && delRes.rowCount > 0) {
+    console.log(`[vault-cleanup] Eliminados ${delRes.rowCount} vaults que ya no existen en la API`);
+  }
+
+  return records.length;
+}
+
+export async function listVaultCapacity(provider?: string): Promise<VaultCapacityRow[]> {
+  const where = provider ? `WHERE provider = $1` : "";
+  const res = await queryAudit(
+    `SELECT provider, account_id AS "accountId", account_name AS "accountName", region,
+            vault_id AS "vaultId", vault_name AS "vaultName",
+            used_bytes AS "usedBytes", capacity_bytes AS "capacityBytes",
+            used_percent AS "usedPercent",
+            collected_at AS "collectedAt"
+     FROM vault_capacity ${where}
+     ORDER BY provider, account_name, vault_name`,
+    provider ? [provider] : [],
+  );
+  return res.rows as VaultCapacityRow[];
+}
+
+// ── Database Inventory ──
+
+export type DatabaseInventoryRecord = {
+  provider: string;
+  accountId: string;
+  accountName: string;
+  name: string;
+  engine: string;
+  engineVersion: string;
+  status: string;
+  host: string;
+};
+
+export async function upsertDatabaseInventory(records: DatabaseInventoryRecord[]): Promise<number> {
+  if (records.length === 0) return 0;
+  // Deduplicar por UNIQUE constraint (provider, account_id, name) para evitar
+  // "ON CONFLICT DO UPDATE command cannot affect row a second time"
+  const seen = new Map<string, DatabaseInventoryRecord>();
+  for (const r of records) {
+    const key = `${r.provider}::${r.accountId}::${r.name}`;
+    seen.set(key, r);
+  }
+  const unique = [...seen.values()];
+  const values: unknown[] = [];
+  const rows = unique.map((r, i) => {
+    const o = i * 8;
+    values.push(r.provider, r.accountId, r.accountName, r.name, r.engine, r.engineVersion, r.status, r.host);
+    const ph = Array.from({ length: 8 }, (_, k) => `$${o + k + 1}`).join(", ");
+    return `(${ph})`;
+  });
+  const res = await queryAudit(
+    `INSERT INTO database_inventory
+      (provider, account_id, account_name, name, engine, engine_version, status, host)
+     VALUES ${rows.join(", ")}
+     ON CONFLICT (provider, account_id, name) DO UPDATE SET
+       account_name = EXCLUDED.account_name,
+       engine = EXCLUDED.engine,
+       engine_version = EXCLUDED.engine_version,
+       status = EXCLUDED.status,
+       host = EXCLUDED.host,
+       collected_at = now()`,
+    values,
+  );
+  return res.rowCount || 0;
+}
+
+// ── Version Enrichment (vía API del proveedor) ──
+
+/**
+ * Calcula y actualiza latest_patch / update_status / update_observation de
+ * database_inventory consultando la API del proveedor:
+ *
+ * - AWS: describe-db-engine-versions → ValidUpgradeTarget[IsMajorVersionUpgrade==false],
+ *   la última entrada es la última versión menor (igual que el script de referencia).
+ * - Huawei: GET /v3/{project_id}/datastores/{engine}/small-version → la versión
+ *   más alta disponible es la última versión menor.
+ *
+ * Los errores transitorios de API preservan los valores previos de la fila.
+ */
+export async function enrichDatabaseVersions(): Promise<number> {
+  const { checkAWSVersion, checkHuaweiVersion } = await import("@/lib/db/version-api");
+  type VersionCheckResult = import("@/lib/db/version-api").VersionCheckResult;
+
+  const res = await queryAudit<{
+    id: string;
+    provider: string;
+    account_id: string;
+    engine: string;
+    engine_version: string;
+  }>(
+    `SELECT id, provider, account_id, engine, engine_version FROM database_inventory WHERE engine_version != ''`,
+  );
+
+  if (res.rows.length === 0) return 0;
+
+  // 1. Deduplicar combos (engine, versión) para minimizar llamadas API.
+  //    AWS: el catálogo es global por motor. Huawei: por cuenta (región).
+  const SEP = "\u0001";
+  const awsCombos = new Map<string, { engine: string; version: string }>();
+  const huaweiCombos = new Map<string, { accountId: string; engine: string; version: string }>();
+
+  for (const row of res.rows) {
+    if (row.provider === "AWS") {
+      const key = `${row.engine}${SEP}${row.engine_version}`;
+      if (!awsCombos.has(key)) awsCombos.set(key, { engine: row.engine, version: row.engine_version });
+    } else if (row.provider === "HUAWEI CLOUD") {
+      const key = `${row.account_id}${SEP}${row.engine}${SEP}${row.engine_version}`;
+      if (!huaweiCombos.has(key)) huaweiCombos.set(key, { accountId: row.account_id, engine: row.engine, version: row.engine_version });
+    }
+  }
+
+  // 2. Consultar las APIs en paralelo (los combos ya están deduplicados).
+  const awsResults = new Map<string, VersionCheckResult>();
+  await Promise.all(
+    [...awsCombos.entries()].map(async ([key, combo]) => {
+      const result = await checkAWSVersion(combo.engine, combo.version);
+      if (result.kind === "error") {
+        console.error(`[db-version] AWS ${combo.engine} ${combo.version}: ${result.message}`);
+      }
+      awsResults.set(key, result);
+    }),
+  );
+
+  const huaweiResults = new Map<string, VersionCheckResult>();
+  await Promise.all(
+    [...huaweiCombos.entries()].map(async ([key, combo]) => {
+      const result = await checkHuaweiVersion(combo.accountId, combo.engine, combo.version);
+      if (result.kind === "error") {
+        console.error(`[db-version] HUAWEI ${combo.engine} ${combo.version}: ${result.message}`);
+      }
+      huaweiResults.set(key, result);
+    }),
+  );
+
+  // 3. Aplicar resultados. "error" (transitorio) preserva los valores previos.
+  const ids: string[] = [];
+  const patches: string[] = [];
+  const statuses: string[] = [];
+  const observations: string[] = [];
+
+  for (const row of res.rows) {
+    const result =
+      row.provider === "AWS"
+        ? awsResults.get(`${row.engine}${SEP}${row.engine_version}`)
+        : huaweiResults.get(`${row.account_id}${SEP}${row.engine}${SEP}${row.engine_version}`);
+    if (!result || result.kind === "error") continue;
+
+    ids.push(row.id);
+    if (result.kind === "ok") {
+      patches.push(result.latestPatch);
+      statuses.push(result.updateStatus);
+    } else {
+      // unsupported: sin última versión consultable
+      patches.push("");
+      statuses.push("Desconocido");
+    }
+    observations.push(result.observation);
+  }
+
+  if (ids.length === 0) return 0;
+
+  const updateRes = await queryAudit(
+    `UPDATE database_inventory SET
+       latest_patch = v.latest_patch,
+       update_status = v.update_status,
+       update_observation = v.update_observation
+     FROM unnest($1::uuid[], $2::text[], $3::text[], $4::text[])
+       AS v(id, latest_patch, update_status, update_observation)
+     WHERE database_inventory.id = v.id`,
+    [ids, patches, statuses, observations],
+  );
+  return updateRes.rowCount || 0;
 }

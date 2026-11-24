@@ -4,15 +4,17 @@ import { recordApiAudit } from "@/lib/audit/server";
 import { generateInformeData, generateEmailHtml, generateEmailText, filterInformeData } from "@/lib/email/informe";
 import { generateRdsInformeData, generateRdsEmailHtml, generateRdsEmailText, filterRdsInformeData } from "@/lib/email/informe-rds";
 import { generateLogsInformeData, generateLogsEmailHtml, generateLogsEmailText, filterLogsInformeData } from "@/lib/email/informe-logs";
+import { generateVaultsInformeData, generateVaultsEmailHtml, generateVaultsEmailText } from "@/lib/email/informe-vaults";
 import { sendEmail, getSendGridConfig } from "@/lib/email/sendgrid";
-import { isValidEmail, normalizeEmail } from "@/lib/email/recipients";
+import { isValidEmail, normalizeEmail, getEffectiveRecipients, type ReportType as RecipientReportType } from "@/lib/email/recipients";
 
-export type ReportType = "servers" | "rds" | "logs";
+export type ReportType = "servers" | "rds" | "logs" | "vaults";
 
 const REPORT_SUBJECTS: Record<ReportType, string> = {
   servers: "Informe diario de backups de servidores",
   rds: "Informe diario de backups de bases de datos",
   logs: "Informe diario de backups de logs transaccionales",
+  vaults: "Informe diario de capacidad de Vaults — Huawei Cloud",
 };
 
 export async function POST(request: Request) {
@@ -26,7 +28,7 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { provider?: unknown; recipients?: unknown; reportType?: unknown };
     if (body.provider === "AWS" || body.provider === "HUAWEI CLOUD") provider = body.provider;
-    if (body.reportType === "rds" || body.reportType === "logs" || body.reportType === "servers") reportType = body.reportType;
+    if (body.reportType === "rds" || body.reportType === "logs" || body.reportType === "servers" || body.reportType === "vaults") reportType = body.reportType;
     if (Array.isArray(body.recipients)) {
       const cleaned: string[] = [...new Set(
         (body.recipients as unknown[]).map((r) => normalizeEmail(String(r ?? ""))),
@@ -50,7 +52,7 @@ export async function POST(request: Request) {
       text = generateRdsEmailText(data);
       generatedAt = data.generatedAt;
       dateLabel = data.dateLabel;
-      total = data.globalSummary.totalSnapshots;
+      total = data.globalSummary.expectedDatabases;
     } else if (reportType === "logs") {
       const full = await generateLogsInformeData();
       const data = provider === "all" ? full : filterLogsInformeData(full, provider);
@@ -59,6 +61,13 @@ export async function POST(request: Request) {
       generatedAt = data.generatedAt;
       dateLabel = data.dateLabel;
       total = data.globalSummary.totalEntries;
+    } else if (reportType === "vaults") {
+      const data = await generateVaultsInformeData();
+      html = generateVaultsEmailHtml(data);
+      text = generateVaultsEmailText(data);
+      generatedAt = data.generatedAt;
+      dateLabel = data.dateLabel;
+      total = data.totalVaults;
     } else {
       const full = await generateInformeData();
       const data = provider === "all" ? full : filterInformeData(full, provider);
@@ -73,9 +82,11 @@ export async function POST(request: Request) {
       ? `${REPORT_SUBJECTS[reportType]} — ${dateLabel}`
       : `${REPORT_SUBJECTS[reportType]} ${provider === "AWS" ? "AWS" : "Huawei"} — ${dateLabel}`;
 
-    const config = await getSendGridConfig();
+    // Get per-type recipients: DB recipients for this report type > env fallback
+    const effective = await getEffectiveRecipients(reportType as RecipientReportType);
     // Destinatarios ad-hoc (escritos en el momento) o los efectivos (BD > .env).
-    const recipients = adHocRecipients || config.recipients;
+    const recipients = adHocRecipients || effective.emails;
+    const recipientsSource = adHocRecipients ? "ad-hoc" : effective.source;
 
     const result = await sendEmail({
       to: recipients,
@@ -94,7 +105,7 @@ export async function POST(request: Request) {
         reportType,
         provider,
         recipients,
-        recipientsSource: adHocRecipients ? "ad-hoc" : config.recipientsSource,
+        recipientsSource,
         messageId: result.messageId,
         total,
       },
@@ -104,7 +115,7 @@ export async function POST(request: Request) {
       success: true,
       messageId: result.messageId,
       recipients,
-      recipientsSource: adHocRecipients ? "ad-hoc" : config.recipientsSource,
+      recipientsSource,
       reportType,
       provider,
       subject,

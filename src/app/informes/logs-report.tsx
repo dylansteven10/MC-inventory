@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, CheckCircle2, Cloud, FileWarning, HardDrive, History } from "lucide-react";
+import { Archive, CheckCircle2, Cloud, FileWarning, HardDrive, History, Server } from "lucide-react";
 import type { LogsInformeData } from "@/lib/email/informe-logs";
 import { Collapsible, MetricCard, formatBytes } from "./shared";
 
@@ -37,11 +37,11 @@ export default function LogsReport({ data, activeTab, onTab, detalleAbierto, onT
           </div>
         )}
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
-          <MetricCard label="Registros" value={data.globalSummary.totalEntries} icon={<History size={16} />} color="#8b5cf6" />
-          <MetricCard label="Cobertura" value={`${data.globalSummary.coveragePct}%`} icon={<CheckCircle2 size={16} />} color="#10b981" />
+          <MetricCard label="Total servidores" value={data.globalSummary.expectedServers} icon={<Server size={16} />} color="#8b5cf6" />
+          <MetricCard label="Con logs" value={data.globalSummary.coveredServers} icon={<CheckCircle2 size={16} />} color="#10b981" />
           <MetricCard label="Sin backup" value={data.globalSummary.missingServers} icon={<FileWarning size={16} />} color="#ef4444" />
+          <MetricCard label="Cobertura" value={`${data.globalSummary.coveragePct}%`} icon={<CheckCircle2 size={16} />} color="#10b981" />
           <MetricCard label="Volumen" value={formatBytes(data.globalSummary.totalBytes)} icon={<Archive size={16} />} color="#06b6d4" />
-          <MetricCard label="Completitud" value={`${data.globalSummary.successRate}%`} icon={<CheckCircle2 size={16} />} color="#f59e0b" />
         </div>
       </div>
 
@@ -75,24 +75,16 @@ export default function LogsReport({ data, activeTab, onTab, detalleAbierto, onT
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
-                    { label: "Registros", value: currentReport.totalEntries, color: activeTab === "aws" ? "#f59e0b" : "#ef4444" },
-                    { label: "Completos", value: currentReport.completedTotal, color: "#10b981" },
-                    { label: "Faltantes", value: currentReport.missingTotal, color: "#ef4444" },
+                    { label: "Total servidores", value: currentReport.accounts.reduce((a, c) => a + c.serversTracked, 0), color: activeTab === "aws" ? "#f59e0b" : "#ef4444" },
+                    { label: "Con logs", value: currentReport.accounts.reduce((a, c) => a + c.serversOk, 0), color: "#10b981" },
                     { label: "Sin backup", value: currentReport.accounts.reduce((a, c) => a + c.serversMissing, 0), color: "#ef4444" },
+                    { label: "Cobertura", value: `${(() => { const total = currentReport.accounts.reduce((a, c) => a + c.serversTracked, 0); const ok = currentReport.accounts.reduce((a, c) => a + c.serversOk, 0); return total ? Math.round((ok / total) * 100) : 0; })()}%`, color: "#10b981" },
                   ].map((m) => (
                     <div key={m.label} className="rounded-xl border border-[var(--border)] bg-[var(--bg-hover)]/30 p-3">
                       <p className="text-[10px] tracking-widest uppercase font-semibold text-[var(--text-secondary)]">{m.label}</p>
                       <p className="text-xl font-bold mt-1" style={{ color: m.color }}>{m.value}</p>
                     </div>
                   ))}
-                </div>
-
-                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-                  <p className="text-[10px] tracking-widest uppercase font-semibold text-emerald-400/70">Completitud global</p>
-                  <p className="text-3xl font-bold text-emerald-400 mt-1">{currentReport.successRate}%</p>
-                  <div className="mt-2 h-2 rounded-full bg-emerald-500/10 overflow-hidden">
-                    <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${currentReport.successRate}%` }} />
-                  </div>
                 </div>
 
                 <Collapsible
@@ -152,7 +144,7 @@ export default function LogsReport({ data, activeTab, onTab, detalleAbierto, onT
                         <table className="w-full">
                           <thead className="bg-[var(--bg-hover)]/60 border-b border-[var(--border)]">
                             <tr>
-                              {["Servidor", "Bucket", "Estado", "Tamaño"].map((h) => (
+                              {["Servidor", "Bucket", "Región", "Estado", "Tamaño"].map((h) => (
                                 <th key={h} className="px-3 py-2.5 text-left text-[10px] uppercase tracking-wider text-[var(--text-secondary)] whitespace-nowrap">{h}</th>
                               ))}
                             </tr>
@@ -168,6 +160,7 @@ export default function LogsReport({ data, activeTab, onTab, detalleAbierto, onT
                                     {s.serverName}
                                   </td>
                                   <td className="px-3 py-2.5 text-[11px] text-[var(--text-secondary)] whitespace-nowrap">{s.bucketName || "—"}</td>
+                                  <td className="px-3 py-2.5 text-[11px] text-[var(--text-secondary)] whitespace-nowrap">{s.region || "—"}</td>
                                   <td className="px-3 py-2.5">
                                     <span className={`px-2 py-0.5 rounded-full text-[10px] border font-medium whitespace-nowrap ${missing || failed ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"}`}>
                                       {missing ? "SIN BACKUP" : s.status}

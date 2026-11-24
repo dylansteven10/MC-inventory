@@ -181,7 +181,7 @@ function statusStyle(status: string): string {
   return "bg-cyan-500/10 text-cyan-400 border-cyan-500/20";
 }
 
-function buildFilterParams(page: number, pageSize: number, f: { provider: string; accountId: string; status: string; resourceType: string; search: string; from: string; to: string }) {
+function buildFilterParams(page: number, pageSize: number, f: { provider: string; accountId: string; status: string; resourceType: string; search: string; from: string; to: string; region: string }) {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   if (f.provider) params.set("provider", f.provider);
   if (f.accountId) params.set("accountId", f.accountId);
@@ -190,6 +190,7 @@ function buildFilterParams(page: number, pageSize: number, f: { provider: string
   if (f.search.trim()) params.set("search", f.search.trim());
   if (f.from) params.set("from", new Date(`${f.from}T00:00:00-05:00`).toISOString());
   if (f.to) params.set("to", new Date(`${f.to}T23:59:59-05:00`).toISOString());
+  if (f.region && f.region !== "all") params.set("region", f.region);
   return params;
 }
 
@@ -276,6 +277,7 @@ export default function BackupsPage() {
   const [accountId, setAccountId] = useState("");
   const [status, setStatus] = useState("");
   const [resourceType, setResourceType] = useState("");
+  const [filterRegion, setFilterRegion] = useState<string>("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -379,7 +381,7 @@ export default function BackupsPage() {
   }, [prefsOpen]);
 
   const fetchData = useCallback(async (p: number, ps: number, signal?: AbortSignal) => {
-    const params = buildFilterParams(p, ps, { provider, accountId, status, resourceType, search, from, to });
+    const params = buildFilterParams(p, ps, { provider, accountId, status, resourceType, search, from, to, region: filterRegion });
     const res = await fetch(`/api/backups?${params.toString()}`, { signal });
     if (!res.ok) throw new Error("No se pudieron cargar los backups");
     const json = await res.json();
@@ -387,7 +389,7 @@ export default function BackupsPage() {
     setTotal(json.total || 0);
     setSummary(json.summary || null);
     setLastRefresh(json.lastRefresh || null);
-  }, [provider, accountId, status, resourceType, search, from, to]);
+  }, [provider, accountId, status, resourceType, search, from, to, filterRegion]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -412,12 +414,14 @@ export default function BackupsPage() {
   };
 
   const clearFilters = () => {
-    setSearch(""); setProvider(""); setAccountId(""); setStatus(""); setResourceType(""); setFrom(""); setTo(""); setPage(1);
+    setSearch(""); setProvider(""); setAccountId(""); setStatus(""); setResourceType(""); setFilterRegion("all"); setFrom(""); setTo(""); setPage(1);
   };
 
   const handleProviderChange = (value: string) => {
     setProvider(value);
     setAccountId("");
+    setResourceType("");
+    setFilterRegion("all");
   };
 
   const handleRefresh = async () => {
@@ -444,7 +448,7 @@ export default function BackupsPage() {
     if (exporting) return;
     setExporting(true);
     try {
-      const f = { provider, accountId, status, resourceType, search, from, to };
+      const f = { provider, accountId, status, resourceType, search, from, to, region: filterRegion };
       const all: BackupRecord[] = [];
       let p = 1;
       let expected = Infinity;
@@ -520,7 +524,8 @@ export default function BackupsPage() {
     (summary?.byAccount || []).forEach((a) => accounts.set(`${a.provider}|${a.accountId}`, { id: a.accountId, name: a.accountName, provider: a.provider }));
     const statuses = (summary?.byStatus || []).map((s) => s.status);
     const resourceTypes = [...new Set(records.map((r) => r.resourceType).filter(Boolean))];
-    return { accounts: [...accounts.values()], statuses, resourceTypes };
+    const regions = [...new Set(records.map((r) => r.region || "N/A"))].filter((r) => r !== "N/A" && r !== "none").sort();
+    return { accounts: [...accounts.values()], statuses, resourceTypes, regions };
   }, [summary, records]);
 
   const filteredAccounts = useMemo(() => {
@@ -532,6 +537,11 @@ export default function BackupsPage() {
     if (!provider) return filterOptions.resourceTypes;
     return [...new Set(records.filter((r) => r.provider === provider).map((r) => r.resourceType).filter(Boolean))];
   }, [provider, records, filterOptions.resourceTypes]);
+
+  const filteredRegions = useMemo(() => {
+    if (!provider) return filterOptions.regions;
+    return [...new Set(records.filter((r) => r.provider === provider).map((r) => r.region).filter((r) => r && r !== "N/A" && r !== "none"))].sort();
+  }, [provider, records, filterOptions.regions]);
 
   const sortedRecords = useMemo(() => {
     if (!sortConfig) return records;
@@ -570,7 +580,7 @@ export default function BackupsPage() {
   const okRate = summary?.total ? Math.round((okCount / summary.total) * 100) : 0;
   const failedRate = summary?.total ? Math.round((failedCount / summary.total) * 100) : 0;
 
-  const activeFilterCount = (provider ? 1 : 0) + (accountId ? 1 : 0) + (status ? 1 : 0) + (resourceType ? 1 : 0) + (from ? 1 : 0) + (to ? 1 : 0);
+  const activeFilterCount = (search ? 1 : 0) + (provider ? 1 : 0) + (accountId ? 1 : 0) + (status ? 1 : 0) + (resourceType ? 1 : 0) + (filterRegion !== "all" ? 1 : 0) + (from ? 1 : 0) + (to ? 1 : 0);
 
   const getCellValue = (r: BackupRecord, key: string) => {
     switch (key) {
@@ -743,6 +753,12 @@ export default function BackupsPage() {
                 <option value="AWS">AWS</option>
                 <option value="HUAWEI CLOUD">Huawei</option>
               </select>
+              {filteredRegions.length > 1 && (
+              <select value={filterRegion} onChange={(e) => setFilterRegion(e.target.value)} aria-label="Región" className="h-9 rounded-lg border border-[var(--border)] bg-[var(--bg-hover)]/60 text-xs text-[var(--text-primary)]/70 px-2.5 outline-none cursor-pointer min-w-[120px]">
+                <option value="all">Región</option>
+                {filteredRegions.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+              )}
               <button onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters} className={`px-3 h-9 rounded-lg border text-xs flex items-center gap-1.5 transition-all ${showFilters ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-400" : "bg-[var(--bg-card)]/60 border-[var(--border)] text-[var(--text-primary)]/60"}`}>
                 <Filter size={14} /> Filtros
                 {activeFilterCount > 0 && <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-bold">{activeFilterCount}</span>}
@@ -771,18 +787,18 @@ export default function BackupsPage() {
                 </select>
               </label>
               <label className="block">
-                <span className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)]">Tipo recurso{provider ? ` (${provider === "AWS" ? "AWS" : "Huawei Cloud"})` : ""}</span>
+                <span className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)]">Servicio{provider ? ` (${provider === "AWS" ? "AWS" : "Huawei Cloud"})` : ""}</span>
                 <select value={resourceType} onChange={(e) => setResourceType(e.target.value)} className="control h-10 mt-1">
                   <option value="">Todos</option>
                   {filteredResourceTypes.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </label>
               <label className="block">
-                <span className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)]">Desde</span>
+                <span className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)]">Fecha desde</span>
                 <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="control h-10 mt-1" />
               </label>
               <label className="block">
-                <span className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)]">Hasta</span>
+                <span className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)]">Fecha hasta</span>
                 <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="control h-10 mt-1" />
               </label>
             </div>

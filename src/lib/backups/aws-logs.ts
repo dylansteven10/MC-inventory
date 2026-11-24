@@ -4,7 +4,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getAWSAccounts } from "@/lib/aws/accounts";
 import type { BackupAccountResult } from "./types";
-import { getYesterdayBogotaDate } from "./date-utils";
+import { getRecentBogotaDates } from "./date-utils";
 
 export type NormalizedLogBackup = {
   provider: "AWS" | "HUAWEI CLOUD";
@@ -45,6 +45,65 @@ function isAccessError(error: any): boolean {
   );
 }
 
+/**
+ * List server folders and their total size under a date prefix in an S3 bucket.
+ * Returns a Map<serverName, sizeBytes>.
+ */
+async function listServerFolders(
+  client: S3Client,
+  bucket: string,
+  datePrefix: string,
+): Promise<Map<string, number>> {
+  const serverFolders = new Map<string, number>();
+  let continuationToken: string | undefined;
+
+  do {
+    const page = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: datePrefix,
+        Delimiter: "/",
+        ContinuationToken: continuationToken,
+      }),
+    );
+
+    for (const common of page.CommonPrefixes || []) {
+      const folderPrefix = common.Prefix || "";
+      const parts = folderPrefix.replace(datePrefix, "").split("/");
+      const serverName = parts[0];
+      if (!serverName) continue;
+
+      const serverPrefix = `${datePrefix}${serverName}/`;
+      let serverSize = 0;
+      let objContinuationToken: string | undefined;
+
+      do {
+        const objPage = await client.send(
+          new ListObjectsV2Command({
+            Bucket: bucket,
+            Prefix: serverPrefix,
+            ContinuationToken: objContinuationToken,
+          }),
+        );
+        for (const obj of objPage.Contents || []) {
+          serverSize += obj.Size || 0;
+        }
+        objContinuationToken = objPage.NextContinuationToken;
+      } while (objContinuationToken);
+
+      serverFolders.set(serverName, serverSize);
+    }
+
+    continuationToken = page.NextContinuationToken;
+  } while (continuationToken);
+
+  return serverFolders;
+}
+
+/**
+ * Collect AWS log backups for the last 3 days.
+ * This ensures we catch backups that were uploaded after the previous day's collection.
+ */
 export async function collectAWSLogBackups(): Promise<{
   records: NormalizedLogBackup[];
   accounts: BackupAccountResult[];
@@ -52,7 +111,9 @@ export async function collectAWSLogBackups(): Promise<{
   const accounts = getAWSAccounts();
   const records: NormalizedLogBackup[] = [];
   const results: BackupAccountResult[] = [];
-  const backupDate = getYesterdayBogotaDate();
+
+  // Collect for the last 3 days to fill gaps from delayed uploads
+  const dates = getRecentBogotaDates(3);
 
   for (const account of accounts) {
     const base = {
@@ -74,77 +135,42 @@ export async function collectAWSLogBackups(): Promise<{
         credentials: { accessKeyId: account.accessKeyId, secretAccessKey: account.secretAccessKey },
       });
 
-      const prefix = `${backupDate}/`;
       let accountRecords = 0;
-      let continuationToken: string | undefined;
-      const serverFolders = new Map<string, number>();
 
-      do {
-        const page = await client.send(
-          new ListObjectsV2Command({
-            Bucket: sigaConfig.bucket,
-            Prefix: prefix,
-            Delimiter: "/",
-            ContinuationToken: continuationToken,
-          }),
-        );
+      for (const backupDate of dates) {
+        const prefix = `${backupDate}/`;
+        const serverFolders = await listServerFolders(client, sigaConfig.bucket, prefix);
 
-        for (const common of page.CommonPrefixes || []) {
-          const folderPrefix = common.Prefix || "";
-          const parts = folderPrefix.replace(prefix, "").split("/");
-          const serverName = parts[0];
-          if (!serverName) continue;
-
-          const serverPrefix = `${prefix}${serverName}/`;
-          let serverSize = 0;
-          let objContinuationToken: string | undefined;
-
-          do {
-            const objPage = await client.send(
-              new ListObjectsV2Command({
-                Bucket: sigaConfig.bucket,
-                Prefix: serverPrefix,
-                ContinuationToken: objContinuationToken,
-              }),
-            );
-            for (const obj of objPage.Contents || []) {
-              serverSize += obj.Size || 0;
-            }
-            objContinuationToken = objPage.NextContinuationToken;
-          } while (objContinuationToken);
-
-          serverFolders.set(serverName, serverSize);
-        }
-
-        continuationToken = page.NextContinuationToken;
-      } while (continuationToken);
-
-      if (serverFolders.size === 0) {
-        records.push({
-          ...base,
-          bucketName: sigaConfig.bucket,
-          backupDate,
-          serverName: "(sin carpetas)",
-          folderExists: false,
-          sizeBytes: 0,
-          status: "NO_BACKUP",
-          raw: { prefix, note: "No se encontraron carpetas de servidor para esta fecha" },
-        });
-        accountRecords++;
-      } else {
-        for (const [serverName, sizeBytes] of serverFolders) {
-          const hasContent = sizeBytes > 0;
+        if (serverFolders.size === 0) {
+          // No folders found for this date — insert a placeholder so the informe
+          // can show "Sin backup" for this account/date. This will be cleaned up
+          // if a future run finds actual folders.
           records.push({
             ...base,
             bucketName: sigaConfig.bucket,
             backupDate,
-            serverName,
-            folderExists: true,
-            sizeBytes,
-            status: hasContent ? "COMPLETED" : "EMPTY",
-            raw: { prefix: `${prefix}${serverName}/`, sizeBytes },
+            serverName: "(sin carpetas)",
+            folderExists: false,
+            sizeBytes: 0,
+            status: "NO_BACKUP",
+            raw: { prefix, note: "No se encontraron carpetas de servidor para esta fecha" },
           });
           accountRecords++;
+        } else {
+          for (const [serverName, sizeBytes] of serverFolders) {
+            const hasContent = sizeBytes > 0;
+            records.push({
+              ...base,
+              bucketName: sigaConfig.bucket,
+              backupDate,
+              serverName,
+              folderExists: true,
+              sizeBytes,
+              status: hasContent ? "COMPLETED" : "EMPTY",
+              raw: { prefix: `${prefix}${serverName}/`, sizeBytes },
+            });
+            accountRecords++;
+          }
         }
       }
 

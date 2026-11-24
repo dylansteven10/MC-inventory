@@ -19,14 +19,18 @@ export type ExpectedResource = {
   provider: string;
   accountId: string;
   accountName: string;
+  region: string;
   resourceId: string;
   resourceName: string;
+  clusterId?: string;
+  dbStatus?: string;
 };
 
 export type ExpectedLogServer = {
   provider: string;
   accountId: string;
   accountName: string;
+  region: string;
   serverName: string;
   bucketName: string;
   manual: boolean;
@@ -48,6 +52,42 @@ export function getPreviousDayBogota(now: Date = new Date()): DayWindow {
   // Mediodía UTC del día actual en Bogotá (evita bordes por DST; Colombia es UTC-5 fijo).
   const todayNoonUTC = Date.UTC(y, m - 1, d, 12, 0, 0);
   const prevNoonUTC = todayNoonUTC - 24 * 60 * 60 * 1000;
+  const prev = new Date(prevNoonUTC);
+  const py = prev.getUTCFullYear();
+  const pm = String(prev.getUTCMonth() + 1).padStart(2, "0");
+  const pd = String(prev.getUTCDate()).padStart(2, "0");
+  const ymd = `${py}${pm}${pd}`;
+  const startISO = `${py}-${pm}-${pd}T05:00:00.000Z`;
+  const endD = new Date(prevNoonUTC + 24 * 60 * 60 * 1000);
+  const ey = endD.getUTCFullYear();
+  const em = String(endD.getUTCMonth() + 1).padStart(2, "0");
+  const ed = String(endD.getUTCDate()).padStart(2, "0");
+  const endISO = `${ey}-${em}-${ed}T05:00:00.000Z`;
+  const label = prev.toLocaleDateString("es-CO", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  return { ymd, startISO, endISO, label };
+}
+
+/** Hace 2 días (antier) en America/Bogota. Usado para el informe de logs transaccionales. */
+export function getTwoDaysAgoBogota(now: Date = new Date()): DayWindow {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = fmt.formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value || "";
+  const y = Number(get("year"));
+  const m = Number(get("month"));
+  const d = Number(get("day"));
+  // Mediodía UTC del día actual en Bogotá, menos 48h = antier.
+  const todayNoonUTC = Date.UTC(y, m - 1, d, 12, 0, 0);
+  const prevNoonUTC = todayNoonUTC - 2 * 24 * 60 * 60 * 1000;
   const prev = new Date(prevNoonUTC);
   const py = prev.getUTCFullYear();
   const pm = String(prev.getUTCMonth() + 1).padStart(2, "0");
@@ -93,7 +133,7 @@ export function isServerItem(item: InventoryItem): boolean {
 
 export function isDatabaseItem(item: InventoryItem): boolean {
   if (item.provider === "AWS") {
-    return item.service === "RDS" || item.service === "Aurora" || item.service === "DocumentDB";
+    return item.service === "RDS" || item.service === "Aurora" || item.service === "DocumentDB" || item.service === "ElastiCache";
   }
   if (item.provider === "HUAWEI CLOUD") {
     return item.service === "RDS" || item.service === "DDS";
@@ -106,8 +146,11 @@ function toExpected(item: InventoryItem): ExpectedResource {
     provider: item.provider || "",
     accountId: item.accountId || "",
     accountName: item.accountName || "N/A",
+    region: item.region || "",
     resourceId: item.id || "",
     resourceName: item.name || item.id || "",
+    clusterId: item.clusterId || undefined,
+    dbStatus: item.status || undefined,
   };
 }
 
@@ -117,18 +160,32 @@ export async function getExpectedServers(items?: InventoryItem[]): Promise<Expec
   return list.filter(isServerItem).map(toExpected);
 }
 
-/** Todas las bases de datos que DEBEN tener backup (del inventario). */
+/** Todas las bases de datos que DEBEN tener backup (del inventario + OBS manual). */
 export async function getExpectedDatabases(items?: InventoryItem[]): Promise<ExpectedResource[]> {
   const list = items || (await getInventoryItems());
-  return list.filter(isDatabaseItem).map(toExpected);
+  const fromInventory = list.filter(isDatabaseItem).map(toExpected);
+
+  // Add OBS-managed databases (not in inventory, monitored via OBS buckets)
+  const obsDatabases: ExpectedResource[] = [
+    {
+      provider: "HUAWEI CLOUD",
+      accountId: "",
+      accountName: "OBS",
+      region: "la-north-2",
+      resourceId: "obs-femfuturo",
+      resourceName: "Femfuturo",
+    },
+  ];
+
+  return [...fromInventory, ...obsDatabases];
 }
 
 function normKey(parts: Array<string | undefined | null>): string {
   return parts.map((p) => (p || "").trim()).join("||");
 }
 
-export function accountKey(provider?: string | null, accountId?: string | null): string {
-  return normKey([provider, accountId]);
+export function accountKey(provider?: string | null, accountId?: string | null, region?: string | null): string {
+  return normKey([provider, accountId, region]);
 }
 
 /**
@@ -149,6 +206,7 @@ export async function getExpectedLogServers(): Promise<ExpectedLogServer[]> {
         provider: r.provider,
         accountId: r.account_id,
         accountName: r.account_name || "N/A",
+        region: "",
         serverName: r.server_name,
         bucketName: r.bucket_name || "",
         manual: true,
@@ -160,7 +218,7 @@ export async function getExpectedLogServers(): Promise<ExpectedLogServer[]> {
 
   try {
     const hist = await queryAudit(
-      `SELECT DISTINCT provider, account_id, account_name, server_name, bucket_name
+      `SELECT DISTINCT provider, account_id, account_name, region, server_name, bucket_name
        FROM log_backups WHERE server_name <> '(sin carpetas)'`,
     );
     for (const r of hist.rows) {
@@ -170,10 +228,15 @@ export async function getExpectedLogServers(): Promise<ExpectedLogServer[]> {
           provider: r.provider,
           accountId: r.account_id,
           accountName: r.account_name || "N/A",
+          region: r.region || "",
           serverName: r.server_name,
           bucketName: r.bucket_name || "",
           manual: false,
         });
+      } else {
+        // Fill region for manual entries from historical data
+        const existing = map.get(key)!;
+        if (!existing.region && r.region) existing.region = r.region;
       }
     }
   } catch {
@@ -195,6 +258,7 @@ export async function listExpectedLogServers(): Promise<Array<ExpectedLogServer 
     provider: r.provider,
     accountId: r.account_id,
     accountName: r.account_name || "N/A",
+    region: "",
     serverName: r.server_name,
     bucketName: r.bucket_name || "",
     manual: true,

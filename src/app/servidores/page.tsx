@@ -96,7 +96,7 @@ const ALL_BUILTIN_COLUMNS: ColumnDef[] = [
   { key: "privateIp", label: "IP Privada", fixed: false },
   { key: "publicIp", label: "IP Pública", fixed: false },
   { key: "os", label: "OS", fixed: false },
-  { key: "availabilityZone", label: "AZ", fixed: false },
+  { key: "availabilityZone", label: "Región/AZ", fixed: false },
   { key: "launchTime", label: "Launch Time", fixed: false },
 ];
 
@@ -112,7 +112,7 @@ function getFieldValue(item: InventoryItem, key: string): string {
     case "privateIp": return item.privateIp || "";
     case "publicIp": return item.publicIp || "";
     case "os": return item.operatingSystem || item.platform || "";
-    case "availabilityZone": return item.availabilityZone || "";
+    case "availabilityZone": return item.region || item.availabilityZone || "";
     case "launchTime": return item.launchTime || "";
     default: return "";
   }
@@ -308,6 +308,7 @@ export default function ServidoresPage() {
   const [filterProvider, setFilterProvider] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterAccount, setFilterAccount] = useState<string>("all");
+  const [filterRegion, setFilterRegion] = useState<string>("all");
 
   const [prefsOpen, setPrefsOpen] = useState(false);
   const prefsBtnRef = useRef<HTMLButtonElement>(null);
@@ -408,18 +409,20 @@ export default function ServidoresPage() {
   const uniqueProviders = useMemo(() => [...new Set(serverData.map((item) => item.provider || "AWS"))].sort(), [serverData]);
   const uniqueStatuses = useMemo(() => [...new Set(serverData.map((item) => item.status || "unknown"))].sort(), [serverData]);
   const uniqueAccounts = useMemo(() => [...new Set(serverData.map((item) => item.accountName || "N/A"))].sort(), [serverData]);
+  const uniqueRegions = useMemo(() => [...new Set(serverData.map((item) => item.region || item.availabilityZone || "N/A"))].filter((r) => r !== "N/A" && r !== "none").sort(), [serverData]);
 
   const filteredData = useMemo(() => {
     let data = serverData;
     if (filterProvider !== "all") data = data.filter((item) => (item.provider || "AWS") === filterProvider);
     if (filterStatus !== "all") data = data.filter((item) => (item.status || "unknown") === filterStatus);
     if (filterAccount !== "all") data = data.filter((item) => (item.accountName || "N/A") === filterAccount);
+    if (filterRegion !== "all") data = data.filter((item) => (item.region || item.availabilityZone || "N/A") === filterRegion);
     if (search.trim()) {
       const q = search.toLowerCase();
       data = data.filter((item) => item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q) || (item.privateIp || "").toLowerCase().includes(q) || (item.publicIp || "").toLowerCase().includes(q) || (item.accountName || "").toLowerCase().includes(q) || (item.instanceType || "").toLowerCase().includes(q) || (item.operatingSystem || item.platform || "").toLowerCase().includes(q));
     }
     return data;
-  }, [serverData, search, filterProvider, filterStatus, filterAccount]);
+  }, [serverData, search, filterProvider, filterStatus, filterAccount, filterRegion]);
 
   const getValueMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -638,7 +641,7 @@ export default function ServidoresPage() {
     setExportOpen(false);
   }, [sortedData, customColumns, getValueMap]);
 
-  const activeFilterCount = (filterProvider !== "all" ? 1 : 0) + (filterStatus !== "all" ? 1 : 0) + (filterAccount !== "all" ? 1 : 0);
+  const activeFilterCount = (filterProvider !== "all" ? 1 : 0) + (filterStatus !== "all" ? 1 : 0) + (filterAccount !== "all" ? 1 : 0) + (filterRegion !== "all" ? 1 : 0);
 
   const renderCellValue = (item: InventoryItem, col: { key: string; isCustom: boolean; colId?: string }) => {
     if (col.isCustom && col.colId) {
@@ -659,7 +662,7 @@ export default function ServidoresPage() {
       case "privateIp": return <span className="text-xs text-[var(--text-primary)]/70 whitespace-nowrap font-mono">{item.privateIp || "—"}</span>;
       case "publicIp": return <span className="text-xs text-[var(--text-primary)]/70 whitespace-nowrap font-mono">{item.publicIp || "—"}</span>;
       case "os": return <span className="text-xs text-[var(--text-primary)]/70 whitespace-nowrap">{item.operatingSystem || item.platform || "—"}</span>;
-      case "availabilityZone": return <span className="text-xs text-[var(--text-primary)]/70 whitespace-nowrap">{item.availabilityZone || "—"}</span>;
+      case "availabilityZone": return <span className="text-xs text-[var(--text-primary)]/70 whitespace-nowrap">{item.region || item.availabilityZone || "—"}</span>;
       case "launchTime": return <span className="text-xs text-[var(--text-primary)]/70 whitespace-nowrap">{formatLaunchTime(item.launchTime)}</span>;
       default: return null;
     }
@@ -735,7 +738,13 @@ export default function ServidoresPage() {
                   <option value="all">Cuenta</option>
                   {uniqueAccounts.map((a) => <option key={a} value={a}>{a}</option>)}
                 </select>
-                {activeFilterCount > 0 && <button type="button" onClick={() => { setFilterProvider("all"); setFilterStatus("all"); setFilterAccount("all"); setCurrentPage(1); }} aria-label="Limpiar filtros" className="h-9 px-2.5 rounded-lg border border-[var(--border)] text-[11px] flex items-center gap-1 text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]/70 hover:bg-[var(--bg-hover)] transition-all"><X size={12} /> Limpiar</button>}
+                {uniqueRegions.length > 1 && (
+                <select value={filterRegion} aria-label="Filtrar por región" onChange={(e) => { setFilterRegion(e.target.value); setCurrentPage(1); }} className="h-9 rounded-lg border border-[var(--border)] bg-[var(--bg-hover)]/60 text-xs text-[var(--text-primary)]/70 px-2.5 outline-none cursor-pointer min-w-[120px]">
+                  <option value="all">Región</option>
+                  {uniqueRegions.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+                )}
+                {activeFilterCount > 0 && <button type="button" onClick={() => { setFilterProvider("all"); setFilterStatus("all"); setFilterAccount("all"); setFilterRegion("all"); setCurrentPage(1); }} aria-label="Limpiar filtros" className="h-9 px-2.5 rounded-lg border border-[var(--border)] text-[11px] flex items-center gap-1 text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]/70 hover:bg-[var(--bg-hover)] transition-all"><X size={12} /> Limpiar</button>}
               </div>
 
               <div className="relative">

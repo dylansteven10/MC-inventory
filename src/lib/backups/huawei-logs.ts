@@ -2,7 +2,7 @@ import ObsClient from "esdk-obs-nodejs";
 import { getHuaweiAccounts } from "@/lib/huawei/accounts";
 import type { BackupAccountResult } from "./types";
 import type { NormalizedLogBackup } from "./aws-logs";
-import { getYesterdayBogotaDate } from "./date-utils";
+import { getRecentBogotaDates } from "./date-utils";
 
 export const HUAWEI_OBS_LOGS_HINT =
   "La credencial Huawei (AK/SK) necesita permisos de listado sobre el bucket OBS ux-backup " +
@@ -15,11 +15,16 @@ export async function collectHuaweiLogBackups(): Promise<{
   const accounts = getHuaweiAccounts();
   const records: NormalizedLogBackup[] = [];
   const results: BackupAccountResult[] = [];
-  const backupDate = getYesterdayBogotaDate();
+  // Collect for the last 3 days to fill gaps from delayed uploads
+  const dates = getRecentBogotaDates(3);
   const BUCKET_NAME = "ux-backup";
 
   // Solo la cuenta acc_ux tiene backups de logs en OBS
   const LOG_ACCOUNT_NAME = "acc_ux";
+
+  // Whitelist de servidores OBS que se monitorean para logs transaccionales
+  // beirut.grupomatrix.local-obs y palermo-obs PERMANENTLY EXCLUDED — ya no reciben backup
+  const OBS_LOG_SERVERS = new Set<string>([]);
 
   for (const account of accounts) {
     const base = {
@@ -41,83 +46,89 @@ export async function collectHuaweiLogBackups(): Promise<{
         server: `https://obs.${account.region}.myhuaweicloud.com`,
       });
 
-      const prefix = `${backupDate}/`;
       let accountRecords = 0;
 
-      const serverFolders = new Map<string, number>();
-      let isTopTruncated = true;
-      let topMarker: string | undefined;
+      for (const backupDate of dates) {
+        const prefix = `${backupDate}/`;
 
-      while (isTopTruncated) {
-        const listResult = await obsClient.listObjects({
-          Bucket: BUCKET_NAME,
-          Prefix: prefix,
-          Delimiter: "/",
-          MaxKeys: 1000,
-          Marker: topMarker || "",
-        });
+        const serverFolders = new Map<string, number>();
+        let isTopTruncated = true;
+        let topMarker: string | undefined;
 
-        const commonPrefixes = listResult?.InterfaceResult?.CommonPrefixes || [];
+        while (isTopTruncated) {
+          const listResult = await obsClient.listObjects({
+            Bucket: BUCKET_NAME,
+            Prefix: prefix,
+            Delimiter: "/",
+            MaxKeys: 1000,
+            Marker: topMarker || "",
+          });
 
-        for (const item of commonPrefixes) {
-          const folderPrefix = item.Prefix || "";
-          const parts = folderPrefix.replace(prefix, "").split("/");
-          const serverName = parts[0];
-          if (!serverName) continue;
+          const commonPrefixes = listResult?.InterfaceResult?.CommonPrefixes || [];
 
-          const serverPrefix = `${prefix}${serverName}/`;
-          let serverSize = 0;
-          let isTruncated = true;
-          let marker: string | undefined;
+          for (const item of commonPrefixes) {
+            const folderPrefix = item.Prefix || "";
+            const parts = folderPrefix.replace(prefix, "").split("/");
+            const serverName = parts[0];
+            if (!serverName) continue;
 
-          while (isTruncated) {
-            const objResult = await obsClient.listObjects({
-              Bucket: BUCKET_NAME,
-              Prefix: serverPrefix,
-              MaxKeys: 1000,
-              Marker: marker || "",
-            });
-            const contents = objResult?.InterfaceResult?.Contents || [];
-            for (const obj of contents) {
-              serverSize += Number(obj.Size) || 0;
+            // Solo servidores en la whitelist OBS
+            if (!OBS_LOG_SERVERS.has(serverName)) continue;
+
+            const serverPrefix = `${prefix}${serverName}/`;
+            let serverSize = 0;
+            let isTruncated = true;
+            let marker: string | undefined;
+
+            while (isTruncated) {
+              const objResult = await obsClient.listObjects({
+                Bucket: BUCKET_NAME,
+                Prefix: serverPrefix,
+                MaxKeys: 1000,
+                Marker: marker || "",
+              });
+              const contents = objResult?.InterfaceResult?.Contents || [];
+              for (const obj of contents) {
+                serverSize += Number(obj.Size) || 0;
+              }
+              isTruncated = objResult?.InterfaceResult?.IsTruncated === "true";
+              marker = objResult?.InterfaceResult?.NextMarker;
             }
-            isTruncated = objResult?.InterfaceResult?.IsTruncated === "true";
-            marker = objResult?.InterfaceResult?.NextMarker;
+
+            serverFolders.set(serverName, serverSize);
           }
 
-          serverFolders.set(serverName, serverSize);
+          isTopTruncated = listResult?.InterfaceResult?.IsTruncated === "true";
+          topMarker = listResult?.InterfaceResult?.NextMarker;
         }
 
-        isTopTruncated = listResult?.InterfaceResult?.IsTruncated === "true";
-        topMarker = listResult?.InterfaceResult?.NextMarker;
-      }
-
-      if (serverFolders.size === 0) {
-        records.push({
-          ...base,
-          bucketName: BUCKET_NAME,
-          backupDate,
-          serverName: "(sin carpetas)",
-          folderExists: false,
-          sizeBytes: 0,
-          status: "NO_BACKUP",
-          raw: { prefix, note: "No se encontraron carpetas de servidor para esta fecha" },
-        });
-        accountRecords++;
-      } else {
-        for (const [serverName, sizeBytes] of serverFolders) {
-          const hasContent = sizeBytes > 0;
+        if (serverFolders.size === 0) {
           records.push({
             ...base,
             bucketName: BUCKET_NAME,
             backupDate,
-            serverName,
-            folderExists: true,
-            sizeBytes,
-            status: hasContent ? "COMPLETED" : "EMPTY",
-            raw: { prefix: `${prefix}${serverName}/`, sizeBytes },
+            serverName: "(sin carpetas)",
+            folderExists: false,
+            sizeBytes: 0,
+            status: "NO_BACKUP",
+            raw: { prefix, note: "No se encontraron carpetas de servidor para esta fecha" },
           });
           accountRecords++;
+        } else {
+          for (const [serverName, sizeBytes] of serverFolders) {
+            const hasContent = sizeBytes > 0;
+            records.push({
+              ...base,
+              bucketName: BUCKET_NAME,
+              backupDate,
+              serverName,
+              folderExists: true,
+              sizeBytes,
+              status: hasContent ? "COMPLETED" : "EMPTY",
+              raw: { prefix: `${prefix}${serverName}/`, sizeBytes },
+            });
+            accountRecords++;
+          }
         }
       }
 

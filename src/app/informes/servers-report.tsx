@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, CheckCircle2, Cloud, Database, HardDrive, XCircle } from "lucide-react";
+import { AlertTriangle, Archive, CheckCircle2, Cloud, Database, HardDrive, XCircle } from "lucide-react";
 import type { InformeData } from "@/lib/email/informe";
 import { Collapsible, MetricCard, formatBogota, formatBytes, statusPillClasses } from "./shared";
 
@@ -19,6 +19,7 @@ export default function ServersReport({ data, activeTab, onTab, detalleAbierto, 
 
   return (
     <>
+      {/* ── Resumen global ── */}
       <div className="page-section" style={{ animationDelay: "0.05s" }}>
         {data.globalSummary.missingServers > 0 ? (
           <div className="mb-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 flex items-center gap-3">
@@ -30,36 +31,51 @@ export default function ServersReport({ data, activeTab, onTab, detalleAbierto, 
             <p className="text-sm font-semibold text-emerald-300">✓ Todos los servidores tienen backup del día anterior ({data.day.label})</p>
           </div>
         )}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
-          <MetricCard label="Total backups" value={data.globalSummary.totalBackups} icon={<Database size={16} />} color="#8b5cf6" />
-          <MetricCard label="Cobertura" value={`${data.globalSummary.coveragePct}%`} icon={<CheckCircle2 size={16} />} color="#10b981" />
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          <MetricCard label="Total servidores" value={data.globalSummary.totalAllServers} icon={<Database size={16} />} color="#8b5cf6" />
+          <MetricCard label="Excepciones" value={data.globalSummary.excludedServers} icon={<AlertTriangle size={16} />} color="#f59e0b" />
+          <MetricCard label="En plan" value={data.globalSummary.expectedServers} icon={<Database size={16} />} color="#6366f1" />
+          <MetricCard label="Con backup" value={data.globalSummary.coveredServers} icon={<CheckCircle2 size={16} />} color="#10b981" />
           <MetricCard label="Sin backup" value={data.globalSummary.missingServers} icon={<XCircle size={16} />} color="#ef4444" />
-          <MetricCard label="Almacenado" value={formatBytes(data.globalSummary.totalBytes)} icon={<Archive size={16} />} color="#06b6d4" />
-          <MetricCard label="Tasa fallo" value={`${data.globalSummary.failureRate}%`} icon={<XCircle size={16} />} color="#f59e0b" />
+          <MetricCard label="Cobertura" value={`${data.globalSummary.coveragePct}%`} icon={<CheckCircle2 size={16} />} color="#10b981" />
         </div>
+        {/* ── Lista de servidores en excepciones ── */}
+        {data.globalSummary.excludedServerNames && data.globalSummary.excludedServerNames.length > 0 && (
+          <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+            <p className="text-xs font-semibold text-amber-400 mb-2">⚠ Servidores en excepciones ({data.globalSummary.excludedServers})</p>
+            <div className="flex flex-wrap gap-1.5">
+              {data.globalSummary.excludedServerNames.map((name) => (
+                <span key={name} className="inline-block rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">{name}</span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* ── Detalle por proveedor ── */}
       <div className="page-section" style={{ animationDelay: "0.1s" }}>
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]/60 backdrop-blur-xl overflow-hidden">
+          {/* Tabs AWS / Huawei */}
           <div className="flex border-b border-[var(--border)]">
             <button
               onClick={() => onTab("aws")}
               className={`flex-1 px-6 py-4 text-sm font-medium flex items-center justify-center gap-2 transition-all ${activeTab === "aws" ? "text-amber-400 border-b-2 border-amber-400 bg-amber-500/5" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
             >
               <Cloud size={16} /> AWS Backup
-              <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === "aws" ? "bg-amber-500/20 text-amber-300" : "bg-[var(--bg-hover)] text-[var(--text-secondary)]"}`}>{data.aws.totalBackups}</span>
+              <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === "aws" ? "bg-amber-500/20 text-amber-300" : "bg-[var(--bg-hover)] text-[var(--text-secondary)]"}`}>{data.aws.accounts.reduce((a, c) => a + c.totalServers, 0)} serv.</span>
             </button>
             <button
               onClick={() => onTab("huawei")}
               className={`flex-1 px-6 py-4 text-sm font-medium flex items-center justify-center gap-2 transition-all ${activeTab === "huawei" ? "text-red-400 border-b-2 border-red-400 bg-red-500/5" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
             >
               <HardDrive size={16} /> Huawei CBR
-              <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === "huawei" ? "bg-red-500/20 text-red-300" : "bg-[var(--bg-hover)] text-[var(--text-secondary)]"}`}>{data.huawei.totalBackups}</span>
+              <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === "huawei" ? "bg-red-500/20 text-red-300" : "bg-[var(--bg-hover)] text-[var(--text-secondary)]"}`}>{data.huawei.accounts.reduce((a, c) => a + c.totalServers, 0)} serv.</span>
             </button>
           </div>
 
+          {/* Contenido del tab */}
           <div className="p-5 space-y-4">
-            {currentReport.totalBackups === 0 ? (
+            {currentReport.totalBackups === 0 && currentReport.accounts.reduce((a, c) => a + c.totalServers, 0) === 0 ? (
               <div className="text-center py-12">
                 <Archive size={28} className="mx-auto mb-3 text-[var(--text-secondary)]/40" />
                 <p className="text-sm font-medium">Sin backups registrados para {currentReport.provider}</p>
@@ -67,12 +83,13 @@ export default function ServersReport({ data, activeTab, onTab, detalleAbierto, 
               </div>
             ) : (
               <>
+                {/* Métricas del proveedor */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
-                    { label: "Total", value: currentReport.totalBackups, color: activeTab === "aws" ? "#f59e0b" : "#ef4444" },
-                    { label: "Exitosos", value: currentReport.successfulTotal, color: "#10b981" },
-                    { label: "Fallidos", value: currentReport.failedTotal, color: "#ef4444" },
-                    { label: "Sin backup", value: currentReport.accounts.reduce((a, c) => a + c.missingServers, 0), color: "#ef4444" },
+                    { label: "Total servidores", value: currentReport.accounts.reduce((a, c) => a + c.totalServers, 0), color: activeTab === "aws" ? "#f59e0b" : "#ef4444" },
+                    { label: "Con backup", value: currentReport.accounts.reduce((a, c) => a + c.successfulBackups, 0), color: "#10b981" },
+                    { label: "Sin backup", value: currentReport.accounts.reduce((a, c) => a + c.missingServers + c.failedBackups, 0), color: "#ef4444" },
+                    { label: "Cobertura", value: `${(() => { const total = currentReport.accounts.reduce((a, c) => a + c.totalServers, 0); const ok = currentReport.accounts.reduce((a, c) => a + c.successfulBackups, 0); return total ? Math.round((ok / total) * 100) : 0; })()}%`, color: "#10b981" },
                   ].map((m) => (
                     <div key={m.label} className="rounded-xl border border-[var(--border)] bg-[var(--bg-hover)]/30 p-3">
                       <p className="text-[10px] tracking-widest uppercase font-semibold text-[var(--text-secondary)]">{m.label}</p>
@@ -81,23 +98,38 @@ export default function ServersReport({ data, activeTab, onTab, detalleAbierto, 
                   ))}
                 </div>
 
+                {/* Tasas de éxito / fallo */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-                    <p className="text-[10px] tracking-widest uppercase font-semibold text-emerald-400/70">Tasa de éxito</p>
-                    <p className="text-3xl font-bold text-emerald-400 mt-1">{currentReport.successRate}%</p>
-                    <div className="mt-2 h-2 rounded-full bg-emerald-500/10 overflow-hidden">
-                      <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${currentReport.successRate}%` }} />
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
-                    <p className="text-[10px] tracking-widest uppercase font-semibold text-red-400/70">Tasa de fallo</p>
-                    <p className="text-3xl font-bold text-red-400 mt-1">{currentReport.failureRate}%</p>
-                    <div className="mt-2 h-2 rounded-full bg-red-500/10 overflow-hidden">
-                      <div className="h-full rounded-full bg-red-500 transition-all" style={{ width: `${currentReport.failureRate}%` }} />
-                    </div>
-                  </div>
+                  {(() => {
+                    const totalServers = currentReport.accounts.reduce((a, c) => a + c.totalServers, 0);
+                    const okServers = currentReport.accounts.reduce((a, c) => a + c.successfulBackups, 0);
+                    const failServers = totalServers - okServers;
+                    const successPct = totalServers ? Math.round((okServers / totalServers) * 100) : 0;
+                    const failPct = totalServers ? Math.round((failServers / totalServers) * 100) : 0;
+                    return (
+                      <>
+                        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                          <p className="text-[10px] tracking-widest uppercase font-semibold text-emerald-400/70">Tasa de éxito</p>
+                          <p className="text-3xl font-bold text-emerald-400 mt-1">{successPct}%</p>
+                          <p className="text-xs text-emerald-400/50 mt-1">{okServers} de {totalServers} servidores</p>
+                          <div className="mt-2 h-2 rounded-full bg-emerald-500/10 overflow-hidden">
+                            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${successPct}%` }} />
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+                          <p className="text-[10px] tracking-widest uppercase font-semibold text-red-400/70">Tasa de fallo</p>
+                          <p className="text-3xl font-bold text-red-400 mt-1">{failPct}%</p>
+                          <p className="text-xs text-red-400/50 mt-1">{failServers} de {totalServers} servidores</p>
+                          <div className="mt-2 h-2 rounded-full bg-red-500/10 overflow-hidden">
+                            <div className="h-full rounded-full bg-red-500 transition-all" style={{ width: `${failPct}%` }} />
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
 
+                {/* Tabla resumen por cuenta */}
                 <Collapsible
                   open={detalleAbierto}
                   onToggle={onToggleDetalle}
@@ -143,6 +175,7 @@ export default function ServersReport({ data, activeTab, onTab, detalleAbierto, 
                   </div>
                 </Collapsible>
 
+                {/* Detalle por cuenta — servidores */}
                 {currentReport.accounts.map((a) => {
                   const abierta = cuentasAbiertas.has(a.accountId);
                   return (
@@ -153,34 +186,42 @@ export default function ServersReport({ data, activeTab, onTab, detalleAbierto, 
                       title={<span className="truncate">{a.accountName} <span className="text-xs font-normal text-[var(--text-secondary)]">({a.region})</span></span>}
                       hint={`${a.serversWithBackup}/${a.totalServers} con backup · ${a.failedBackups} fallidos · ${a.missingServers} sin backup`}
                     >
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead className="bg-[var(--bg-hover)]/60 border-b border-[var(--border)]">
-                            <tr>
-                              {["Servidor", "Tipo", "Vault", "Estado", "Fecha backup", "Tamaño", "Expira"].map((h) => (
-                                <th key={h} className="px-3 py-2.5 text-left text-[10px] uppercase tracking-wider text-[var(--text-secondary)] whitespace-nowrap">{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {a.servers.map((s) => (
-                              <tr key={s.resourceId} className={`border-b border-[var(--border)]/50 hover:bg-[var(--bg-hover)]/30 transition ${s.coverage === "MISSING" ? "bg-red-500/[0.07]" : s.coverage === "FAILED" ? "bg-red-500/[0.03]" : ""}`}>
-                                <td className="px-3 py-2.5">
-                                  <p className="text-xs font-medium truncate max-w-[200px]">{s.resourceName}</p>
-                                  <p className="text-[10px] text-[var(--text-secondary)] font-mono truncate max-w-[200px]">{s.resourceId}</p>
-                                </td>
-                                <td className="px-3 py-2.5 text-[10px] text-[var(--text-secondary)] whitespace-nowrap">{s.resourceType}</td>
-                                <td className="px-3 py-2.5 text-xs text-[var(--text-secondary)] truncate max-w-[140px]">{s.vaultName || "—"}</td>
-                                <td className="px-3 py-2.5">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] border font-medium whitespace-nowrap ${statusPillClasses(s.status)}`}>{s.status}</span>
-                                </td>
-                                <td className="px-3 py-2.5 text-xs whitespace-nowrap">{formatBogota(s.backupCreatedAt)}</td>
-                                <td className="px-3 py-2.5 text-xs whitespace-nowrap tabular-nums">{formatBytes(s.sizeBytes ?? 0)}</td>
-                                <td className="px-3 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">{formatBogota(s.backupExpiresAt)}</td>
+                      <div className="p-4 space-y-4">
+                        {a.missingServers > 0 && (
+                          <p className="text-xs font-semibold text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                            ⚠ {a.missingServers} servidor(es) SIN BACKUP en esta cuenta
+                          </p>
+                        )}
+                        <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+                          <table className="w-full">
+                            <thead className="bg-[var(--bg-hover)]/60 border-b border-[var(--border)]">
+                              <tr>
+                                {["Servidor", "Tipo", "Región", "Vault", "Estado", "Fecha backup", "Tamaño", "Expira"].map((h) => (
+                                  <th key={h} className="px-3 py-2.5 text-left text-[10px] uppercase tracking-wider text-[var(--text-secondary)] whitespace-nowrap">{h}</th>
+                                ))}
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody>
+                              {a.servers.map((s) => (
+                                <tr key={s.resourceId} className={`border-b border-[var(--border)]/50 hover:bg-[var(--bg-hover)]/30 transition ${s.coverage === "MISSING" ? "bg-red-500/[0.07]" : s.coverage === "FAILED" ? "bg-red-500/[0.03]" : ""}`}>
+                                  <td className="px-3 py-2.5">
+                                    <p className="text-xs font-medium truncate max-w-[200px]">{s.resourceName}</p>
+                                    <p className="text-[10px] text-[var(--text-secondary)] font-mono truncate max-w-[200px]">{s.resourceId}</p>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-[10px] text-[var(--text-secondary)] whitespace-nowrap">{s.resourceType}</td>
+                                  <td className="px-3 py-2.5 text-[10px] text-[var(--text-secondary)] whitespace-nowrap">{s.region || "—"}</td>
+                                  <td className="px-3 py-2.5 text-xs text-[var(--text-secondary)] truncate max-w-[140px]">{s.vaultName || "—"}</td>
+                                  <td className="px-3 py-2.5">
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] border font-medium whitespace-nowrap ${statusPillClasses(s.status)}`}>{s.status}</span>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-xs whitespace-nowrap">{formatBogota(s.backupCreatedAt)}</td>
+                                  <td className="px-3 py-2.5 text-xs whitespace-nowrap tabular-nums">{formatBytes(s.sizeBytes ?? 0)}</td>
+                                  <td className="px-3 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">{formatBogota(s.backupExpiresAt)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     </Collapsible>
                   );

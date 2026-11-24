@@ -100,6 +100,9 @@ export async function getHuaweiRDSInventory() {
                 accountId:
                   account.projectId,
 
+                region:
+                  account.region,
+
                 service:
                   "RDS",
 
@@ -138,6 +141,12 @@ export async function getHuaweiRDSInventory() {
                 operatingSystem:
                   `${db.datastore?.type || "RDS"} ${db.datastore?.version || ""}`,
 
+                engine:
+                  db.datastore?.type || undefined,
+
+                engineVersion:
+                  db.datastore?.complete_version || db.datastore?.version || undefined,
+
                 platform:
                   db.datastore?.type,
 
@@ -158,6 +167,11 @@ export async function getHuaweiRDSInventory() {
 
                 topologyType:
                   "database",
+
+                clusterId:
+                  db.type === "Replica" && db.related_instance?.[0]?.id
+                    ? db.related_instance[0].id
+                    : undefined,
 
                 tags,
 

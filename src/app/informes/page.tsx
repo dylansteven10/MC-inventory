@@ -10,6 +10,7 @@ import {
   Database,
   ExternalLink,
   FileBarChart,
+  HardDrive,
   History,
   Inbox,
   Plus,
@@ -27,12 +28,14 @@ import ScrollToTop from "@/components/ui/ScrollToTop";
 import type { InformeData } from "@/lib/email/informe";
 import type { RdsInformeData } from "@/lib/email/informe-rds";
 import type { LogsInformeData } from "@/lib/email/informe-logs";
+import type { VaultsInformeData } from "@/lib/email/informe-vaults";
 import { formatBogota } from "./shared";
 import ServersReport from "./servers-report";
 import RdsReport from "./rds-report";
 import LogsReport from "./logs-report";
+import VaultsReport from "./vaults-report";
 
-type ReportType = "servers" | "rds" | "logs";
+type ReportType = "servers" | "rds" | "logs" | "vaults";
 type ProviderTab = "aws" | "huawei";
 
 type Recipient = {
@@ -40,6 +43,7 @@ type Recipient = {
   email: string;
   name: string | null;
   active: boolean;
+  reportType: string | null;
 };
 
 type RecentSend = {
@@ -59,6 +63,7 @@ type AllReports = {
   servers: InformeData;
   rds: RdsInformeData;
   logs: LogsInformeData;
+  vaults: VaultsInformeData;
   sendGridConfigured: boolean;
 };
 
@@ -66,6 +71,7 @@ const REPORT_META: Record<ReportType, { label: string; short: string }> = {
   servers: { label: "Servidores", short: "servidores" },
   rds: { label: "Bases de datos", short: "bases de datos" },
   logs: { label: "Logs transaccionales", short: "logs" },
+  vaults: { label: "Vaults Huawei", short: "vaults Huawei" },
 };
 
 export default function InformesPage() {
@@ -92,10 +98,26 @@ export default function InformesPage() {
 
   // Centro de configuración de correo
   const [configOpen, setConfigOpen] = useState(false);
-  const [configTab, setConfigTab] = useState<"estado" | "correos" | "enviar">("estado");
+  const [configTab, setConfigTab] = useState<"estado" | "correos" | "enviar" | "excepciones">("estado");
   const [sendReportType, setSendReportType] = useState<ReportType>("servers");
   const [sendProvider, setSendProvider] = useState<"all" | "AWS" | "HUAWEI CLOUD">("all");
   const [adHoc, setAdHoc] = useState("");
+
+  // Exceptions (volatile/temporary servers)
+  const [exceptions, setExceptions] = useState<{ id: string; pattern: string; reason: string }[]>([]);
+  const [newExceptionPattern, setNewExceptionPattern] = useState("");
+  const [newExceptionReason, setNewExceptionReason] = useState("");
+
+  // Database exceptions (DBs excluded from backup compliance)
+  const [dbExceptions, setDbExceptions] = useState<{ id: string; pattern: string; reason: string; weekendExempt: boolean; accountId: string | null; accountName: string | null }[]>([]);
+  const [newDbExceptionPattern, setNewDbExceptionPattern] = useState("");
+  const [newDbExceptionReason, setNewDbExceptionReason] = useState("");
+  const [newDbExceptionWeekend, setNewDbExceptionWeekend] = useState(false);
+  const [newDbExceptionAccountId, setNewDbExceptionAccountId] = useState("");
+  const [newDbExceptionAccountName, setNewDbExceptionAccountName] = useState("");
+
+  // Per-type recipient filter
+  const [recipientFilterType, setRecipientFilterType] = useState<ReportType | "all">("all");
 
   const toggleCuenta = (accountId: string) => {
     setCuentasAbiertas((prev) => {
@@ -119,6 +141,20 @@ export default function InformesPage() {
       if (!res.ok) throw new Error("Error cargando informe");
       const json = await res.json();
       setData(json);
+      // Auto-open all account collapsibles
+      const allIds = new Set<string>();
+      if (json.servers) {
+        json.servers.aws.accounts.forEach((a: any) => allIds.add(a.accountId));
+        json.servers.huawei.accounts.forEach((a: any) => allIds.add(a.accountId));
+      }
+      if (json.rds) {
+        json.rds.aws?.accounts?.forEach((a: any) => allIds.add(a.accountId));
+        json.rds.huawei?.accounts?.forEach((a: any) => allIds.add(a.accountId));
+      }
+      if (json.vaults) {
+        json.vaults.accounts?.forEach((a: any) => allIds.add(a.accountId));
+      }
+      setCuentasAbiertas(allIds);
     } catch {
       toast.error("Error cargando datos del informe");
     } finally {
@@ -132,7 +168,8 @@ export default function InformesPage() {
 
   const fetchRecipients = useCallback(async () => {
     try {
-      const res = await fetch("/api/informes/recipients");
+      const rt = recipientFilterType === "all" ? "" : `?reportType=${recipientFilterType}`;
+      const res = await fetch(`/api/informes/recipients${rt}`);
       if (!res.ok) return;
       const json = await res.json();
       setRecipients(json.recipients || []);
@@ -140,7 +177,7 @@ export default function InformesPage() {
       setSenderEmail(json.senderEmail || "");
       setRecentSends(json.recentSends || []);
     } catch {}
-  }, []);
+  }, [recipientFilterType]);
 
   useEffect(() => {
     fetchRecipients();
@@ -193,10 +230,11 @@ export default function InformesPage() {
     }
     setSavingRecipient(true);
     try {
+      const rt = recipientFilterType === "all" ? undefined : recipientFilterType;
       const res = await fetch("/api/informes/recipients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, name: newName.trim() }),
+        body: JSON.stringify({ email, name: newName.trim(), reportType: rt || null }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo agregar");
@@ -236,6 +274,100 @@ export default function InformesPage() {
       toast.error(e?.message || "No se pudo eliminar el destinatario");
     }
   };
+
+  // --- Exceptions (volatile/temporary servers) ---
+  const fetchExceptions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/informes/exceptions");
+      const json = await res.json();
+      setExceptions(json.exceptions || []);
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleAddException = async () => {
+    if (!newExceptionPattern.trim()) return;
+    try {
+      const res = await fetch("/api/informes/exceptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pattern: newExceptionPattern.trim(), reason: newExceptionReason.trim() }),
+      });
+      if (!res.ok) throw new Error("No se pudo agregar");
+      toast.success(`Excepción "${newExceptionPattern.trim()}" agregada`);
+      setNewExceptionPattern("");
+      setNewExceptionReason("");
+      fetchExceptions();
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo agregar la excepción");
+    }
+  };
+
+  const handleRemoveException = async (id: string, pattern: string) => {
+    if (!window.confirm(`¿Eliminar la excepción "${pattern}"?`)) return;
+    try {
+      const res = await fetch(`/api/informes/exceptions?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("No se pudo eliminar");
+      toast.success("Excepción eliminada");
+      fetchExceptions();
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo eliminar la excepción");
+    }
+  };
+
+  useEffect(() => {
+    if (configOpen && configTab === "excepciones") fetchExceptions();
+  }, [configOpen, configTab, fetchExceptions]);
+
+  // --- Database exceptions (DBs excluded from backup compliance) ---
+  const fetchDbExceptions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/informes/db-exceptions");
+      const json = await res.json();
+      setDbExceptions(json.exceptions || []);
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleAddDbException = async () => {
+    if (!newDbExceptionPattern.trim()) return;
+    try {
+      const res = await fetch("/api/informes/db-exceptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pattern: newDbExceptionPattern.trim(),
+          reason: newDbExceptionReason.trim(),
+          weekendExempt: newDbExceptionWeekend,
+          accountId: newDbExceptionAccountId || null,
+          accountName: newDbExceptionAccountName || null,
+        }),
+      });
+      if (!res.ok) throw new Error("No se pudo agregar");
+      toast.success(`Excepción DB "${newDbExceptionPattern.trim()}" agregada`);
+      setNewDbExceptionPattern("");
+      setNewDbExceptionReason("");
+      setNewDbExceptionAccountId("");
+      setNewDbExceptionAccountName("");
+      fetchDbExceptions();
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo agregar la excepción de DB");
+    }
+  };
+
+  const handleRemoveDbException = async (id: string, pattern: string) => {
+    if (!window.confirm(`¿Eliminar la excepción de DB "${pattern}"?`)) return;
+    try {
+      const res = await fetch(`/api/informes/db-exceptions?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("No se pudo eliminar");
+      toast.success("Excepción de DB eliminada");
+      fetchDbExceptions();
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo eliminar la excepción de DB");
+    }
+  };
+
+  useEffect(() => {
+    if (configOpen && configTab === "excepciones") fetchDbExceptions();
+  }, [configOpen, configTab, fetchDbExceptions]);
 
   const handleRefresh = () => {
     setLoading(true);
@@ -313,11 +445,12 @@ export default function InformesPage() {
       </div>
 
       <div className="page-section" style={{ animationDelay: "0.03s" }}>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {([
-            { id: "servers", label: "Servidores", desc: `${data.servers.globalSummary.totalBackups} backups · ${data.servers.globalSummary.successRate}% éxito`, icon: <Server size={17} />, active: reportType === "servers", accent: "#8b5cf6" },
-            { id: "rds", label: "Bases de datos", desc: `${data.rds.globalSummary.totalSnapshots} snapshots · ${data.rds.globalSummary.successRate}% éxito`, icon: <Database size={17} />, active: reportType === "rds", accent: "#06b6d4" },
-            { id: "logs", label: "Logs transaccionales", desc: `${data.logs.globalSummary.totalEntries} registros · ${data.logs.globalSummary.successRate}% completitud`, icon: <History size={17} />, active: reportType === "logs", accent: "#f59e0b" },
+            { id: "servers", label: "Servidores", desc: `${data.servers.globalSummary.coveredServers}/${data.servers.globalSummary.expectedServers} con backup · ${data.servers.globalSummary.coveragePct}% cobertura`, icon: <Server size={17} />, active: reportType === "servers", accent: "#8b5cf6" },
+            { id: "rds", label: "Bases de datos", desc: `${data.rds.globalSummary.coveredDatabases}/${data.rds.globalSummary.expectedDatabases} con backup · ${data.rds.globalSummary.coveragePct}% cobertura`, icon: <Database size={17} />, active: reportType === "rds", accent: "#06b6d4" },
+            { id: "logs", label: "Logs transaccionales", desc: `${data.logs.globalSummary.coveredServers}/${data.logs.globalSummary.expectedServers} con backup · ${data.logs.globalSummary.coveragePct}% cobertura`, icon: <History size={17} />, active: reportType === "logs", accent: "#f59e0b" },
+            { id: "vaults", label: "Vaults Huawei", desc: "Capacidad de vaults CBR", icon: <HardDrive size={17} />, active: reportType === "vaults", accent: "#ef4444" },
           ] as const).map((t) => (
             <button
               key={t.id}
@@ -372,6 +505,13 @@ export default function InformesPage() {
           onToggleCuenta={toggleCuenta}
         />
       )}
+      {reportType === "vaults" && (
+        <VaultsReport
+          data={data.vaults}
+          cuentasAbiertas={cuentasAbiertas}
+          onToggleCuenta={toggleCuenta}
+        />
+      )}
 
       <div className="page-section flex justify-end">
         <button
@@ -411,6 +551,7 @@ export default function InformesPage() {
               {([
                 { id: "estado", label: "Estado" },
                 { id: "correos", label: "Correos" },
+                { id: "excepciones", label: "Excepciones" },
                 { id: "enviar", label: "Enviar" },
               ] as const).map((t) => (
                 <button
@@ -474,6 +615,33 @@ export default function InformesPage() {
 
               {configTab === "correos" && (
                 <div>
+                  {/* Per-informe-type filter */}
+                  <div className="mb-3">
+                    <p className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)] mb-2">Destinatarios para</p>
+                    <div className="grid grid-cols-5 gap-2">
+                      {([
+                        { id: "all" as const, label: "Todos" },
+                        { id: "servers" as const, label: "Servidores" },
+                        { id: "rds" as const, label: "BD" },
+                        { id: "logs" as const, label: "Logs" },
+                        { id: "vaults" as const, label: "Vaults" },
+                      ] as const).map((o) => (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onClick={() => setRecipientFilterType(o.id)}
+                          className={`py-2 rounded-xl text-xs font-medium border transition-all ${recipientFilterType === o.id ? "bg-violet-600 text-white border-violet-600" : "border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
+                        >
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-[var(--text-secondary)] mt-1.5">
+                      {recipientFilterType === "all"
+                        ? "Mostrando todos los destinatarios. Los marcados \"Todos\" reciben todos los informes."
+                        : `Mostrando destinatarios para ${REPORT_META[recipientFilterType].label}. Incluye los marcados \"Todos\".`}
+                    </p>
+                  </div>
                   <p className="text-xs text-[var(--text-secondary)] mb-3">
                     {recipientsSource === "db" ? (
                       <>Lista gestionada aquí <span className="text-emerald-400 font-medium">({recipients.filter((r) => r.active).length} activos)</span>. Tiene prioridad sobre la variable de entorno.</>
@@ -505,6 +673,16 @@ export default function InformesPage() {
                             <p className="text-sm font-medium truncate">{r.email}</p>
                             {r.name && <p className="text-xs text-[var(--text-secondary)] truncate">{r.name}</p>}
                           </div>
+                          {/* Report type badge */}
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            !r.reportType ? "bg-violet-500/10 text-violet-300 border-violet-500/20" :
+                            r.reportType === "servers" ? "bg-purple-500/10 text-purple-300 border-purple-500/20" :
+                            r.reportType === "rds" ? "bg-cyan-500/10 text-cyan-300 border-cyan-500/20" :
+                            r.reportType === "logs" ? "bg-amber-500/10 text-amber-300 border-amber-500/20" :
+                            "bg-red-500/10 text-red-300 border-red-500/20"
+                          }`}>
+                            {!r.reportType ? "Todos" : REPORT_META[r.reportType as ReportType]?.short || r.reportType}
+                          </span>
                           {!r.active && <span className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)]">Inactivo</span>}
                           {canManageRecipients && (
                             <button
@@ -522,37 +700,146 @@ export default function InformesPage() {
                     </div>
                   )}
                   {canManageRecipients ? (
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <input
-                        type="email"
-                        value={newEmail}
-                        onChange={(e) => setNewEmail(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") handleAddRecipient(); }}
-                        placeholder="correo@ejemplo.com"
-                        aria-label="Nuevo correo destinatario"
-                        className="flex-1 px-3.5 py-2.5 rounded-xl text-sm bg-white/[0.04] border border-white/10 outline-none focus:border-cyan-500/40 placeholder:text-[var(--text-secondary)]/40"
-                      />
-                      <input
-                        type="text"
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") handleAddRecipient(); }}
-                        placeholder="Nombre (opcional)"
-                        aria-label="Nombre del destinatario"
-                        className="sm:w-40 px-3.5 py-2.5 rounded-xl text-sm bg-white/[0.04] border border-white/10 outline-none focus:border-cyan-500/40 placeholder:text-[var(--text-secondary)]/40"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddRecipient}
-                        disabled={savingRecipient || !newEmail.trim()}
-                        className="px-4 py-2.5 rounded-xl bg-cyan-600 text-white text-sm font-medium flex items-center justify-center gap-2 hover:bg-cyan-500 disabled:opacity-50 transition-all"
-                      >
-                        <Plus size={16} /> {savingRecipient ? "..." : "Agregar"}
-                      </button>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="email"
+                          value={newEmail}
+                          onChange={(e) => setNewEmail(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleAddRecipient(); }}
+                          placeholder="correo@ejemplo.com"
+                          aria-label="Nuevo correo destinatario"
+                          className="flex-1 px-3.5 py-2.5 rounded-xl text-sm bg-white/[0.04] border border-white/10 outline-none focus:border-cyan-500/40 placeholder:text-[var(--text-secondary)]/40"
+                        />
+                        <input
+                          type="text"
+                          value={newName}
+                          onChange={(e) => setNewName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleAddRecipient(); }}
+                          placeholder="Nombre (opcional)"
+                          aria-label="Nombre del destinatario"
+                          className="sm:w-40 px-3.5 py-2.5 rounded-xl text-sm bg-white/[0.04] border border-white/10 outline-none focus:border-cyan-500/40 placeholder:text-[var(--text-secondary)]/40"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-[10px] uppercase tracking-widest text-[var(--text-secondary)] shrink-0">Para informe:</p>
+                        {([
+                          { id: null as string | null, label: "Todos" },
+                          { id: "servers" as string | null, label: "Servidores" },
+                          { id: "rds" as string | null, label: "BD" },
+                          { id: "logs" as string | null, label: "Logs" },
+                          { id: "vaults" as string | null, label: "Vaults" },
+                        ]).map((o) => (
+                          <span key={o.label} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${!o.id ? "bg-violet-500/10 text-violet-300 border-violet-500/20" : "bg-[var(--bg-hover)]/30 text-[var(--text-secondary)] border-[var(--border)]"}`}>{o.label}</span>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={handleAddRecipient}
+                          disabled={savingRecipient || !newEmail.trim()}
+                          className="ml-auto px-4 py-2.5 rounded-xl bg-cyan-600 text-white text-sm font-medium flex items-center justify-center gap-2 hover:bg-cyan-500 disabled:opacity-50 transition-all"
+                        >
+                          <Plus size={16} /> {savingRecipient ? "..." : "Agregar"}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-[var(--text-secondary)]">
+                        El destinatario se agregará para el informe seleccionado en el filtro de arriba ({recipientFilterType === "all" ? "Todos" : REPORT_META[recipientFilterType]?.label || "Todos"}).
+                      </p>
                     </div>
                   ) : (
                     <p className="text-xs text-[var(--text-secondary)]">Solo un administrador puede gestionar los destinatarios.</p>
                   )}
+                </div>
+              )}
+
+              {configTab === "excepciones" && (
+                <div className="space-y-6">
+                  {/* Server exceptions */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Server size={14} className="text-violet-400" />
+                      <p className="text-sm font-semibold">Excepciones de servidores</p>
+                    </div>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      Servidores volátiles o temporales (ej. nodos Jenkins) que se excluyen de todos los conteos, informes y reportes. No se les exige backup.
+                    </p>
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {exceptions.length === 0 ? (
+                        <p className="text-xs text-[var(--text-secondary)] italic">No hay excepciones de servidores configuradas</p>
+                      ) : exceptions.map((ex) => (
+                        <div key={ex.id} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-hover)]/30 px-3 py-2.5">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-[var(--text-primary)] truncate">{ex.pattern}</p>
+                            {ex.reason && <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">{ex.reason}</p>}
+                          </div>
+                          <button type="button" onClick={() => handleRemoveException(ex.id, ex.pattern)} className="text-red-400/50 hover:text-red-400 transition-colors" title="Eliminar excepción">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t border-[var(--border)] pt-3 space-y-2">
+                      <p className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)]">Agregar excepción de servidor</p>
+                      <input type="text" value={newExceptionPattern} onChange={(e) => setNewExceptionPattern(e.target.value)} placeholder="Nombre o patrón del servidor (ej. ux-slave)" className="w-full px-3.5 py-2.5 rounded-xl text-sm bg-white/[0.04] border border-white/10 outline-none focus:border-cyan-500/40 placeholder:text-[var(--text-secondary)]/40" />
+                      <input type="text" value={newExceptionReason} onChange={(e) => setNewExceptionReason(e.target.value)} placeholder="Razón (ej. Nodo temporal de Jenkins)" className="w-full px-3.5 py-2.5 rounded-xl text-sm bg-white/[0.04] border border-white/10 outline-none focus:border-cyan-500/40 placeholder:text-[var(--text-secondary)]/40" />
+                      <button type="button" onClick={handleAddException} disabled={!newExceptionPattern.trim()} className="w-full py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold flex items-center justify-center gap-2 hover:bg-violet-500 disabled:opacity-40 transition-all">
+                        <Plus size={14} /> Agregar servidor
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-[var(--text-secondary)]">
+                      Excepciones activas: {exceptions.length} — Estos servidores no se contarán en totales, tasas ni informes.
+                    </p>
+                  </div>
+
+                  {/* Database exceptions */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Database size={14} className="text-cyan-400" />
+                      <p className="text-sm font-semibold">Excepciones de bases de datos</p>
+                    </div>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      Bases de datos de desarrollo, prueba o temporales que no requieren backup. Se excluyen de los conteos de cumplimiento del informe de Bases de Datos.
+                    </p>
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {dbExceptions.length === 0 ? (
+                        <p className="text-xs text-[var(--text-secondary)] italic">No hay excepciones de bases de datos configuradas</p>
+                      ) : dbExceptions.map((ex) => (
+                        <div key={ex.id} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-hover)]/30 px-3 py-2.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-[var(--text-primary)] truncate">{ex.pattern}</p>
+                              {ex.accountName && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-300 border border-violet-500/20 shrink-0">{ex.accountName}</span>}
+                              {!ex.accountName && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20 shrink-0">Todas las cuentas</span>}
+                            </div>
+                            {ex.reason && <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">{ex.reason}</p>}
+                          </div>
+                          {ex.weekendExempt && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-300 border-amber-500/20">Fin de semana</span>}
+                          <button type="button" onClick={() => handleRemoveDbException(ex.id, ex.pattern)} className="text-red-400/50 hover:text-red-400 transition-colors" title="Eliminar excepción DB">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t border-[var(--border)] pt-3 space-y-2">
+                      <p className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)]">Agregar excepción de base de datos</p>
+                      <input type="text" value={newDbExceptionPattern} onChange={(e) => setNewDbExceptionPattern(e.target.value)} placeholder="Nombre o patrón de la DB (ej. test-)" className="w-full px-3.5 py-2.5 rounded-xl text-sm bg-white/[0.04] border border-white/10 outline-none focus:border-cyan-500/40 placeholder:text-[var(--text-secondary)]/40" />
+                      <input type="text" value={newDbExceptionReason} onChange={(e) => setNewDbExceptionReason(e.target.value)} placeholder="Razón (ej. Base de datos de desarrollo)" className="w-full px-3.5 py-2.5 rounded-xl text-sm bg-white/[0.04] border border-white/10 outline-none focus:border-cyan-500/40 placeholder:text-[var(--text-secondary)]/40" />
+                      <div className="flex gap-2">
+                        <input type="text" value={newDbExceptionAccountName} onChange={(e) => { setNewDbExceptionAccountName(e.target.value); if (!e.target.value) setNewDbExceptionAccountId(""); }} placeholder="Cuenta (vacío = todas)" className="flex-1 px-3.5 py-2.5 rounded-xl text-sm bg-white/[0.04] border border-white/10 outline-none focus:border-violet-500/40 placeholder:text-[var(--text-secondary)]/40" />
+                        <input type="text" value={newDbExceptionAccountId} onChange={(e) => setNewDbExceptionAccountId(e.target.value)} placeholder="Account ID (opcional)" className="flex-1 px-3.5 py-2.5 rounded-xl text-sm bg-white/[0.04] border border-white/10 outline-none focus:border-violet-500/40 placeholder:text-[var(--text-secondary)]/40" />
+                      </div>
+                      <p className="text-[10px] text-[var(--text-secondary)]">Si especifica una cuenta, la excepción solo aplica a bases de datos de esa cuenta. Deje vacío para aplicar a todas.</p>
+                      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)] cursor-pointer">
+                        <input type="checkbox" checked={newDbExceptionWeekend} onChange={(e) => setNewDbExceptionWeekend(e.target.checked)} className="rounded border-[var(--border)]" />
+                        Exenta fines de semana (DB apagada sáb/dom)
+                      </label>
+                      <button type="button" onClick={handleAddDbException} disabled={!newDbExceptionPattern.trim()} className="w-full py-2.5 rounded-xl bg-cyan-600 text-white text-sm font-semibold flex items-center justify-center gap-2 hover:bg-cyan-500 disabled:opacity-40 transition-all">
+                        <Plus size={14} /> Agregar base de datos
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-[var(--text-secondary)]">
+                      Excepciones activas: {dbExceptions.length} — Estas bases de datos no se contarán en totales, tasas ni informes.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -566,11 +853,12 @@ export default function InformesPage() {
                   )}
                   <div>
                     <p className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)] mb-2">Informe</p>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-4 gap-2">
                       {([
                         { id: "servers", label: "Servidores" },
                         { id: "rds", label: "Bases de datos" },
                         { id: "logs", label: "Logs" },
+                        { id: "vaults", label: "Vaults Huawei" },
                       ] as const).map((o) => (
                         <button
                           key={o.id}
@@ -583,6 +871,7 @@ export default function InformesPage() {
                       ))}
                     </div>
                   </div>
+                  {sendReportType !== "vaults" && (
                   <div>
                     <p className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)] mb-2">Alcance del informe</p>
                     <div className="grid grid-cols-3 gap-2">
@@ -602,6 +891,15 @@ export default function InformesPage() {
                       ))}
                     </div>
                   </div>
+                  )}
+                  {sendReportType === "vaults" && (
+                  <div>
+                    <p className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)] mb-2">Alcance</p>
+                    <div className="px-3 py-2.5 rounded-xl border border-[var(--border)] text-sm text-[var(--text-secondary)]">
+                      Solo Huawei Cloud (CBR) — AWS no aplica
+                    </div>
+                  </div>
+                  )}
                   <div>
                     <p className="text-[11px] uppercase tracking-widest text-[var(--text-secondary)] mb-2">Correos adicionales (opcional)</p>
                     <textarea

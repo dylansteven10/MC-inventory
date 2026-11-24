@@ -2,6 +2,18 @@ import { huaweiRequest } from "@/lib/huawei/auth";
 import { getHuaweiAccounts } from "@/lib/huawei/accounts";
 import type { BackupAccountResult, NormalizedBackup } from "./types";
 
+export type VaultCapacityRecord = {
+  provider: "HUAWEI CLOUD";
+  accountId: string;
+  accountName: string;
+  region: string;
+  vaultId: string;
+  vaultName: string;
+  usedBytes: number;
+  capacityBytes: number;
+  usedPercent: number;
+};
+
 export const HUAWEI_CBR_IAM_HINT =
   "La credencial Huawei (AK/SK) necesita permisos de consulta sobre CBR en este proyecto " +
   "(recomendado: rol de sistema CBR Administrator). Si usas una política personalizada, " +
@@ -27,10 +39,11 @@ function parseCbrDate(value: unknown): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-export async function collectHuaweiBackups(): Promise<{ records: NormalizedBackup[]; accounts: BackupAccountResult[] }> {
+export async function collectHuaweiBackups(): Promise<{ records: NormalizedBackup[]; accounts: BackupAccountResult[]; vaultCapacity: VaultCapacityRecord[] }> {
   const accounts = getHuaweiAccounts();
   const records: NormalizedBackup[] = [];
   const results: BackupAccountResult[] = [];
+  const vaultCapacity: VaultCapacityRecord[] = [];
 
   for (const account of accounts) {
     const base = {
@@ -49,6 +62,30 @@ export async function collectHuaweiBackups(): Promise<{ records: NormalizedBacku
       }
       const vaults: any[] = vaultsRes.data.vaults || [];
       const vaultNameById = new Map(vaults.map((v) => [v.id, v.name || v.id]));
+
+      // Extraer capacidad de cada vault desde billing:
+      //   billing.size = capacidad total en GB
+      //   billing.used = capacidad usada en MB (NO billing.allocated, que es la cuota asignada en GB)
+      //   billing.allocated = cuota asignada en GB (puede exceder size, NO es el uso real)
+      for (const v of vaults) {
+        const billing = v.billing || {};
+        const usedMB = typeof billing.used === "number" ? billing.used : 0;
+        const capacityGB = typeof billing.size === "number" ? billing.size : 0;
+        const usedBytes = usedMB * 1024 * 1024;           // MB → bytes
+        const capacityBytes = capacityGB * 1024 * 1024 * 1024;  // GB → bytes
+        const usedPercent = capacityBytes > 0 ? Math.round((usedBytes / capacityBytes) * 10000) / 100 : 0;
+        vaultCapacity.push({
+          provider: "HUAWEI CLOUD",
+          accountId: account.projectId,
+          accountName: account.name,
+          region: account.region,
+          vaultId: v.id || "",
+          vaultName: v.name || v.id || "",
+          usedBytes,
+          capacityBytes,
+          usedPercent,
+        });
+      }
 
       let accountRecords = 0;
       const limit = 100;
@@ -116,5 +153,5 @@ export async function collectHuaweiBackups(): Promise<{ records: NormalizedBacku
     }
   }
 
-  return { records, accounts: results };
+  return { records, accounts: results, vaultCapacity };
 }

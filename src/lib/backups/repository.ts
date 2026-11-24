@@ -27,11 +27,18 @@ function toRecord(row: any): BackupRecord {
 
 export async function upsertBackups(records: NormalizedBackup[]): Promise<number> {
   if (records.length === 0) return 0;
+  // Deduplicar por UNIQUE constraint (provider, account_id, backup_id)
+  const seen = new Map<string, NormalizedBackup>();
+  for (const r of records) {
+    const key = `${r.provider}::${r.accountId}::${r.backupId}`;
+    seen.set(key, r);
+  }
+  const deduped = [...seen.values()];
   // pg admite 65535 parámetros por statement: 17 columnas x 500 filas = 8500.
   const CHUNK = 500;
   let total = 0;
-  for (let start = 0; start < records.length; start += CHUNK) {
-    const chunk = records.slice(start, start + CHUNK);
+  for (let start = 0; start < deduped.length; start += CHUNK) {
+    const chunk = deduped.slice(start, start + CHUNK);
     const values: unknown[] = [];
     const rows = chunk.map((r, i) => {
       const o = i * 17;

@@ -177,6 +177,12 @@ async function getAccountDDSInventory(
           operatingSystem:
             instanceDetail.engine || "mongodb",
 
+          engine:
+            instanceDetail.engine || undefined,
+
+          engineVersion:
+            instanceDetail.engine_version || undefined,
+
           platform:
             instanceDetail.engine_version,
 

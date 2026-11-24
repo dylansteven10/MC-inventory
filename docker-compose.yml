@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -41,6 +41,7 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL:?NEXTAUTH_URL is required}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
       AUDIT_HASH_SECRET: ${AUDIT_HASH_SECRET:?AUDIT_HASH_SECRET is required}
+      CRON_SECRET: ${CRON_SECRET:-mc-inventory-cron-2026}
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -67,6 +68,17 @@ services:
       HUAWEI_ACCOUNT_1_AK: ${HUAWEI_ACCOUNT_1_AK:-}
       HUAWEI_ACCOUNT_1_SK: ${HUAWEI_ACCOUNT_1_SK:-}
       HUAWEI_ACCOUNT_1_REGION: ${HUAWEI_ACCOUNT_1_REGION:-la-north-2}
+      # Multi-region support for AWS: comma-separated list of regions per account.
+      # If set, overrides the single REGION var. Example: AWS_ACCOUNT_10_REGIONS=us-east-1,us-west-2
+      AWS_ACCOUNT_10_REGIONS: ${AWS_ACCOUNT_10_REGIONS:-}   # invictus-antioquia
+      AWS_ACCOUNT_13_REGIONS: ${AWS_ACCOUNT_13_REGIONS:-}   # invictus-cap-antioquia
+      # Huawei: each region has its own Project ID, so add a new numbered account entry
+      # e.g., HUAWEI_ACCOUNT_12_NAME=acc_reditos, HUAWEI_ACCOUNT_12_PROJECT_ID=xxx, HUAWEI_ACCOUNT_12_REGION=na-mexico-1
+      HUAWEI_ACCOUNT_12_NAME: ${HUAWEI_ACCOUNT_12_NAME:-}
+      HUAWEI_ACCOUNT_12_PROJECT_ID: ${HUAWEI_ACCOUNT_12_PROJECT_ID:-}
+      HUAWEI_ACCOUNT_12_AK: ${HUAWEI_ACCOUNT_12_AK:-}
+      HUAWEI_ACCOUNT_12_SK: ${HUAWEI_ACCOUNT_12_SK:-}
+      HUAWEI_ACCOUNT_12_REGION: ${HUAWEI_ACCOUNT_12_REGION:-na-mexico-1}
       AZURE_AD_CLIENT_ID: ${AZURE_AD_CLIENT_ID:-}
       AZURE_AD_CLIENT_SECRET: ${AZURE_AD_CLIENT_SECRET:-}
       AZURE_AD_TENANT_ID: ${AZURE_AD_TENANT_ID:-}
@@ -93,6 +105,9 @@ services:
       INFORMES_SCHEDULE_HOUR: ${INFORMES_SCHEDULE_HOUR:-7}
     ports:
       - "${APP_PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/data
+    extra_hosts:
+      - "dynamodb.us-east-1.amazonaws.com:3.218.181.18"
 
-volumes:
-  postgres_data:
+volumes: {}

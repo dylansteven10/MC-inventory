@@ -2,14 +2,18 @@ import { queryAudit } from "@/lib/db/pool";
 import {
   accountKey,
   getExpectedLogServers,
-  getPreviousDayBogota,
+  getTwoDaysAgoBogota,
   type Coverage,
   type DayWindow,
 } from "./compliance";
 
+const UX_LOGO_SRC =
+  "https://i0.wp.com/ux.technology/wp-content/uploads/2023/08/Logo-UX-Technology.png?fit=150%2C80&ssl=1";
+
 export type LogServerDetail = {
   serverName: string;
   bucketName: string;
+  region: string;
   sizeBytes: number;
   status: string;
   folderExists: boolean;
@@ -62,12 +66,11 @@ export type LogsInformeData = {
   globalSummary: {
     totalEntries: number;
     totalBytes: number;
-    successRate: number;
-    failureRate: number;
+    coveragePct: number;
+    missingPct: number;
     expectedServers: number;
     coveredServers: number;
     missingServers: number;
-    coveragePct: number;
   };
 };
 
@@ -116,16 +119,23 @@ function esc(str: string): string {
  * de ayer en cada bucket (S3/OBS). Lo ausente sale en rojo como SIN BACKUP.
  */
 export async function generateLogsInformeData(day?: DayWindow): Promise<LogsInformeData> {
-  const target = day || getPreviousDayBogota();
+  const target = day || getTwoDaysAgoBogota();
   const now = new Date();
-  const expected = await getExpectedLogServers();
+  let expected = await getExpectedLogServers();
 
-  const byAccount = new Map<string, { provider: string; accountId: string; accountName: string; expected: typeof expected }>();
+  // Permanently excluded OBS log servers — no longer receive backup
+  const PERMANENTLY_EXCLUDED_LOG_SERVERS = new Set([
+    "beirut.grupomatrix.local-obs",
+    "palermo-obs",
+  ]);
+  expected = expected.filter((e) => !PERMANENTLY_EXCLUDED_LOG_SERVERS.has(e.serverName.toLowerCase()));
+
+  const byAccount = new Map<string, { provider: string; accountId: string; accountName: string; region: string; expected: typeof expected }>();
   for (const exp of expected) {
-    const key = accountKey(exp.provider, exp.accountId);
+    const key = accountKey(exp.provider, exp.accountId, exp.region);
     let entry = byAccount.get(key);
     if (!entry) {
-      entry = { provider: exp.provider, accountId: exp.accountId, accountName: exp.accountName, expected: [] };
+      entry = { provider: exp.provider, accountId: exp.accountId, accountName: exp.accountName, region: exp.region || "", expected: [] };
       byAccount.set(key, entry);
     }
     entry.expected.push(exp);
@@ -152,7 +162,9 @@ export async function generateLogsInformeData(day?: DayWindow): Promise<LogsInfo
   const windowByAccount = new Map<string, typeof windowRes.rows>();
   for (const row of windowRes.rows) {
     if (row.server_name === "(sin carpetas)") continue;
-    const key = accountKey(row.provider, row.account_id);
+    // Permanently excluded OBS log servers
+    if (PERMANENTLY_EXCLUDED_LOG_SERVERS.has(row.server_name.toLowerCase())) continue;
+    const key = accountKey(row.provider, row.account_id, row.region);
     const list = windowByAccount.get(key);
     if (list) list.push(row);
     else windowByAccount.set(key, [row]);
@@ -165,6 +177,7 @@ export async function generateLogsInformeData(day?: DayWindow): Promise<LogsInfo
         provider: first.provider,
         accountId: first.account_id,
         accountName: first.account_name || "N/A",
+        region: first.region || "",
         expected: [],
       });
     }
@@ -174,7 +187,7 @@ export async function generateLogsInformeData(day?: DayWindow): Promise<LogsInfo
     const providerEntries = [...byAccount.values()].filter((a) => a.provider === provider);
 
     const accounts = providerEntries.map((acc) => {
-      const rows = windowByAccount.get(accountKey(acc.provider, acc.accountId)) || [];
+      const rows = windowByAccount.get(accountKey(acc.provider, acc.accountId, acc.region)) || [];
       const byServer = new Map<string, (typeof rows)[number]>();
       for (const r of rows) {
         const k = r.server_name.toLowerCase();
@@ -193,6 +206,7 @@ export async function generateLogsInformeData(day?: DayWindow): Promise<LogsInfo
           servers.push({
             serverName: exp.serverName,
             bucketName: exp.bucketName || rec?.bucket_name || "",
+            region: region,
             sizeBytes: rec ? Number(rec.size_bytes || 0) : 0,
             status: rec ? rec.status : "SIN BACKUP",
             folderExists: !!rec?.folder_exists,
@@ -204,6 +218,7 @@ export async function generateLogsInformeData(day?: DayWindow): Promise<LogsInfo
         servers.push({
           serverName: exp.serverName,
           bucketName: rec.bucket_name || "",
+          region: region,
           sizeBytes: Number(rec.size_bytes || 0),
           status: rec.status,
           folderExists: true,
@@ -220,6 +235,7 @@ export async function generateLogsInformeData(day?: DayWindow): Promise<LogsInfo
         servers.push({
           serverName: rec.server_name,
           bucketName: rec.bucket_name || "",
+          region: region,
           sizeBytes: Number(rec.size_bytes || 0),
           status: rec.status,
           folderExists: !!rec.folder_exists,
@@ -276,8 +292,8 @@ export async function generateLogsInformeData(day?: DayWindow): Promise<LogsInfo
       accounts,
       completedTotal,
       missingTotal,
-      successRate: totalEntries ? Math.round((completedTotal / totalEntries) * 100) : 0,
-      failureRate: totalEntries ? Math.round((missingTotal / totalEntries) * 100) : 0,
+      successRate: accounts.reduce((a, c) => a + c.serversTracked, 0) ? Math.round((accounts.reduce((a, c) => a + c.serversOk, 0) / accounts.reduce((a, c) => a + c.serversTracked, 0)) * 100) : 0,
+      failureRate: accounts.reduce((a, c) => a + c.serversTracked, 0) ? Math.round((accounts.reduce((a, c) => a + c.serversMissing, 0) / accounts.reduce((a, c) => a + c.serversTracked, 0)) * 100) : 0,
     };
   }
 
@@ -302,12 +318,11 @@ export async function generateLogsInformeData(day?: DayWindow): Promise<LogsInfo
     globalSummary: {
       totalEntries: globalTotal,
       totalBytes: globalBytes,
-      successRate: globalTotal ? Math.round((globalOk / globalTotal) * 100) : 0,
-      failureRate: globalTotal ? Math.round((globalMissing / globalTotal) * 100) : 0,
+      coveragePct: expectedServers ? Math.round((coveredServers / expectedServers) * 100) : 0,
+      missingPct: expectedServers ? Math.round((Math.max(0, expectedServers - coveredServers) / expectedServers) * 100) : 0,
       expectedServers,
       coveredServers,
       missingServers: Math.max(0, expectedServers - coveredServers),
-      coveragePct: expectedServers ? Math.round((coveredServers / expectedServers) * 100) : 0,
     },
   };
 }
@@ -335,6 +350,7 @@ function renderProviderSection(report: LogsProviderReport): string {
           return `<tr style="${missing ? "background:#fef2f2;" : ""}">
             <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:500;color:#1f2937;">${esc(s.serverName)}</td>
             <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;">${esc(s.bucketName)}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;">${esc(s.region)}</td>
             <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;"><span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;color:${sc};background:${sb};${missing ? "border:1px solid #ef4444;" : ""}">${label}</span></td>
             <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:right;white-space:nowrap;">${formatBytes(s.sizeBytes)}</td>
           </tr>`;
@@ -379,6 +395,7 @@ function renderProviderSection(report: LogsProviderReport): string {
             <tr style="background:#f9fafb;">
               <th align="left" style="padding:8px 10px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Servidor</th>
               <th align="left" style="padding:8px 10px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Bucket</th>
+              <th align="left" style="padding:8px 10px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Región</th>
               <th align="left" style="padding:8px 10px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Estado</th>
               <th align="right" style="padding:8px 10px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Tamaño</th>
             </tr>
@@ -400,7 +417,7 @@ function renderProviderSection(report: LogsProviderReport): string {
             <span style="font-size:13px;color:rgba(255,255,255,0.8);margin-left:12px;">${report.accounts.length} cuenta(s) · ${report.totalEntries} registros · ${formatBytes(report.totalBytes)}</span>
           </td>
           <td align="right">
-            <span style="display:inline-block;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600;color:#ffffff;background:rgba(255,255,255,0.2);">Completitud: ${report.successRate}%</span>
+            <span style="display:inline-block;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600;color:#ffffff;background:rgba(255,255,255,0.2);">Cobertura: ${report.successRate}%</span>
           </td>
         </tr>
       </table>
@@ -423,18 +440,21 @@ export function generateLogsEmailHtml(data: LogsInformeData): string {
 </head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
 <center style="width:100%;padding:24px 0;">
-<table cellpadding="0" cellspacing="0" border="0" width="680" style="max-width:680px;width:100%;">
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:960px;width:100%;margin:0 auto;">
 
   <tr>
-    <td style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);padding:28px 32px;border-radius:12px 12px 0 0;">
+    <td bgcolor="#0f172a" style="background:#0f172a;padding:24px 32px;border-radius:12px 12px 0 0;">
       <table cellpadding="0" cellspacing="0" border="0" width="100%">
         <tr>
-          <td style="vertical-align:middle;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">MC Inventory</div>
-            <div style="font-size:13px;color:#94a3b8;margin-top:2px;">Informe diario de backups de logs transaccionales</div>
+          <td style="vertical-align:middle;width:1%;white-space:nowrap;padding-right:16px;">
+            <img src="${UX_LOGO_SRC}" alt="UX Technology" width="120" height="70" style="display:block;border-radius:10px;">
           </td>
-          <td align="right" style="vertical-align:middle;">
-            <div style="font-size:12px;color:#94a3b8;">${esc(dateLabel)}</div>
+          <td style="vertical-align:middle;">
+            <div style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">MC Inventory</div>
+            <div style="font-size:14px;color:#cbd5e1;margin-top:3px;">Informe diario de backups de logs transaccionales</div>
+          </td>
+          <td align="right" style="vertical-align:middle;white-space:nowrap;">
+            <div style="font-size:13px;color:#94a3b8;">${esc(dateLabel)}</div>
           </td>
         </tr>
       </table>
@@ -458,11 +478,11 @@ export function generateLogsEmailHtml(data: LogsInformeData): string {
           </td>
           <td width="25%" style="padding:12px 14px;background:#f9fafb;border-right:1px solid #e5e7eb;">
             <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Completitud</div>
-            <div style="font-size:24px;font-weight:700;color:#10b981;margin-top:4px;">${globalSummary.successRate}%</div>
+            <div style="font-size:24px;font-weight:700;color:#10b981;margin-top:4px;">${globalSummary.coveragePct}%</div>
           </td>
           <td width="25%" style="padding:12px 14px;background:#f9fafb;border-radius:0 8px 8px 0;">
             <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Faltantes</div>
-            <div style="font-size:24px;font-weight:700;color:#ef4444;margin-top:4px;">${globalSummary.failureRate}%</div>
+            <div style="font-size:24px;font-weight:700;color:#ef4444;margin-top:4px;">${globalSummary.missingPct}%</div>
           </td>
         </tr>
       </table>
@@ -477,7 +497,7 @@ export function generateLogsEmailHtml(data: LogsInformeData): string {
   </tr>
 
   <tr>
-    <td style="background:#1e293b;padding:20px 32px;border-radius:0 0 12px 12px;text-align:center;">
+    <td bgcolor="#1e293b" style="background:#1e293b;padding:20px 32px;border-radius:0 0 12px 12px;text-align:center;">
       <div style="font-size:13px;color:#94a3b8;">UX Technology · MC Inventory</div>
       <div style="font-size:11px;color:#64748b;margin-top:4px;">Informe generado automáticamente · ${esc(dateLabel)}</div>
     </td>
@@ -499,8 +519,8 @@ export function generateLogsEmailText(data: LogsInformeData): string {
   lines.push("=== RESUMEN EJECUTIVO ===");
   lines.push(`Registros: ${globalSummary.totalEntries}`);
   lines.push(`Volumen total: ${formatBytes(globalSummary.totalBytes)}`);
-  lines.push(`Completitud: ${globalSummary.successRate}%`);
-  lines.push(`Faltantes: ${globalSummary.failureRate}%`);
+  lines.push(`Cobertura: ${globalSummary.coveragePct}%`);
+  lines.push(`Faltantes: ${globalSummary.missingPct}%`);
   lines.push(`Cobertura: ${globalSummary.coveredServers}/${globalSummary.expectedServers} servidores (${globalSummary.coveragePct}%)`);
   if (globalSummary.missingServers > 0) {
     lines.push(`!!! ${globalSummary.missingServers} SERVIDOR(ES) SIN BACKUP DE LOGS !!!`);
@@ -519,7 +539,7 @@ export function generateLogsEmailText(data: LogsInformeData): string {
         lines.push(`  Fecha ${d.backupDate}: ${d.serversOk}/${d.serversTotal} servidores`);
         for (const s of d.servers) {
           const flag = s.coverage === "MISSING" ? "[SIN BACKUP] " : s.coverage === "FAILED" ? "[FALLIDO] " : "";
-          lines.push(`    ${flag}${s.serverName} | ${s.bucketName || "—"} | ${s.status} | ${formatBytes(s.sizeBytes)}`);
+          lines.push(`    ${flag}${s.serverName} | ${s.bucketName || "—"} | ${s.region} | ${s.status} | ${formatBytes(s.sizeBytes)}`);
         }
       }
       lines.push("");
@@ -559,12 +579,11 @@ export function filterLogsInformeData(data: LogsInformeData, provider: "AWS" | "
     globalSummary: {
       totalEntries: keep.totalEntries,
       totalBytes: keep.totalBytes,
-      successRate: keep.successRate,
-      failureRate: keep.failureRate,
+      coveragePct: expectedCount ? Math.round((covered / expectedCount) * 100) : 0,
+      missingPct: expectedCount ? Math.round((Math.max(0, expectedCount - covered) / expectedCount) * 100) : 0,
       expectedServers: expectedCount,
       coveredServers: covered,
       missingServers: Math.max(0, expectedCount - covered),
-      coveragePct: expectedCount ? Math.round((covered / expectedCount) * 100) : 0,
     },
   };
 }

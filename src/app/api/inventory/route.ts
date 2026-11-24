@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { recordApiAudit } from "@/lib/audit/server";
 import { requireApiSession } from "@/lib/auth/server";
+import { queryAudit } from "@/lib/db/pool";
 
 import { getAWSInventory } from "@/lib/aws";
 
@@ -45,12 +46,16 @@ import {
   enrichRelationships
 } from "@/lib/inventory/enrichRelationships";
 
+import { enrichRegion } from "@/lib/inventory/enrichRegion";
+
 import {
 
   readInventoryCache,
   writeInventoryCache
 
 } from "@/lib/inventory/cache";
+
+import { upsertDatabaseInventory } from "@/lib/backups/repository-extended";
 
 export const dynamic =
   "force-dynamic";
@@ -147,9 +152,34 @@ async function buildInventory() {
       allInventory
     );
 
+  // Enrich region field from availabilityZone or account config
+  enrichRegion(enriched);
+
   console.timeEnd(
     "inventory-build"
   );
+
+  // Persistir bases de datos en la BD para el informe
+  try {
+    const DB_SERVICES = new Set(["RDS", "Aurora", "DocumentDB", "DDS", "ElastiCache"]);
+    const dbItems = enriched.filter((i: any) => DB_SERVICES.has(i.service));
+    if (dbItems.length > 0) {
+      await upsertDatabaseInventory(
+        dbItems.map((i: any) => ({
+          provider: i.provider || "N/A",
+          accountId: i.accountId || "",
+          accountName: i.accountName || "",
+          name: i.name || "",
+          engine: i.engine || i.operatingSystem || "",
+          engineVersion: i.engineVersion || "",
+          status: i.status || "",
+          host: i.host || "",
+        })),
+      );
+    }
+  } catch (err) {
+    console.error("Failed to persist database_inventory:", err);
+  }
 
   return enriched;
 
@@ -206,6 +236,58 @@ export async function GET(request: NextRequest) {
     const guard = await requireApiSession("inventory:view", request);
     if (guard.response) return guard.response;
 
+    // ?refresh=true forces a cache bypass and full rebuild
+    const forceRefresh = request.nextUrl.searchParams.get("refresh") === "true";
+
+    if (forceRefresh && !refreshing) {
+      refreshing = true;
+      console.log("[inventory] FORCE REFRESH requested — rebuilding inventory...");
+      try {
+        const inventory = await buildInventory();
+        writeInventoryCache({ timestamp: Date.now(), data: inventory });
+
+        await recordApiAudit(request, guard.session, {
+          action: "inventory.refresh",
+          result: "success",
+          statusCode: 200,
+          startedAt,
+          metadata: { source: "force-refresh", itemCount: inventory.length },
+        });
+
+        // Enrich with version info
+        let enrichedData = inventory;
+        try {
+          const DB_SERVICES = new Set(["RDS", "Aurora", "DocumentDB", "DDS", "ElastiCache"]);
+          const hasDbs = inventory.some((i: any) => DB_SERVICES.has(i.service));
+          if (hasDbs) {
+            const dbInvRes = await queryAudit<{
+              provider: string; account_id: string; name: string;
+              latest_patch: string; update_status: string; update_observation: string;
+            }>(`SELECT provider, account_id, name, latest_patch, update_status, update_observation FROM database_inventory WHERE latest_patch != ''`);
+            const dbMap = new Map<string, { latestPatch: string; updateStatus: string; updateObservation: string }>();
+            for (const r of dbInvRes.rows) {
+              dbMap.set(`${r.provider}|${r.account_id}|${r.name}`, {
+                latestPatch: r.latest_patch,
+                updateStatus: r.update_status,
+                updateObservation: r.update_observation,
+              });
+            }
+            enrichedData = inventory.map((item: any) => {
+              if (!DB_SERVICES.has(item.service)) return item;
+              const key = `${item.provider}|${item.accountId}|${item.name}`;
+              const vi = dbMap.get(key);
+              if (!vi) return item;
+              return { ...item, latestPatch: vi.latestPatch, updateStatus: vi.updateStatus, updateObservation: vi.updateObservation };
+            });
+          }
+        } catch { /* ignore */ }
+
+        return NextResponse.json({ source: "force-refresh", timestamp: Date.now(), refreshing: false, data: enrichedData });
+      } finally {
+        refreshing = false;
+      }
+    }
+
     const cached =
       readInventoryCache();
 
@@ -253,6 +335,35 @@ export async function GET(request: NextRequest) {
         startedAt,
         metadata: { source: "cache", itemCount: cached.data.length },
       });
+
+      // Enrich database items with version info from database_inventory
+      let enrichedData = cached.data;
+      try {
+        const DB_SERVICES = new Set(["RDS", "Aurora", "DocumentDB", "DDS", "ElastiCache"]);
+        const hasDbs = cached.data.some((i: any) => DB_SERVICES.has(i.service));
+        if (hasDbs) {
+          const dbInvRes = await queryAudit<{
+            provider: string; account_id: string; name: string;
+            latest_patch: string; update_status: string; update_observation: string;
+          }>(`SELECT provider, account_id, name, latest_patch, update_status, update_observation FROM database_inventory WHERE latest_patch != ''`);
+          const dbMap = new Map<string, { latestPatch: string; updateStatus: string; updateObservation: string }>();
+          for (const r of dbInvRes.rows) {
+            dbMap.set(`${r.provider}|${r.account_id}|${r.name}`, {
+              latestPatch: r.latest_patch,
+              updateStatus: r.update_status,
+              updateObservation: r.update_observation,
+            });
+          }
+          enrichedData = cached.data.map((item: any) => {
+            if (!DB_SERVICES.has(item.service)) return item;
+            const key = `${item.provider}|${item.accountId}|${item.name}`;
+            const vi = dbMap.get(key);
+            if (!vi) return item;
+            return { ...item, latestPatch: vi.latestPatch, updateStatus: vi.updateStatus, updateObservation: vi.updateObservation };
+          });
+        }
+      } catch { /* ignore if table doesn't exist yet */ }
+
       return NextResponse.json({
 
         source:
@@ -264,7 +375,7 @@ export async function GET(request: NextRequest) {
         refreshing,
 
         data:
-          cached.data
+          enrichedData
 
       });
 

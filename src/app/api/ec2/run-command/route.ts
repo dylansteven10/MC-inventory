@@ -44,7 +44,7 @@ type ValidationResult = {
 };
 
 const region = process.env.AWS_REGION || "us-east-1";
-const maxTargets = Math.min(Math.max(Number(process.env.COMMAND_MAX_TARGETS || 50) || 50, 1), 100);
+const maxTargets = Math.min(Math.max(Number(process.env.COMMAND_MAX_TARGETS || 200) || 200, 1), 500);
 const maxCommandLength = Math.min(Math.max(Number(process.env.COMMAND_MAX_LENGTH || 4000) || 4000, 1), 16_000);
 
 const sharedDangerousPatterns: Array<[RegExp, string]> = [

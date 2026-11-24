@@ -128,6 +128,9 @@ export type InventoryItem = {
 
   availabilityZone?: string;
 
+  /** Explicit region (e.g. "us-east-1", "la-north-2"). Derived from availabilityZone or account config. */
+  region?: string;
+
   launchTime?: string;
 
   imageId?: string;
@@ -163,6 +166,12 @@ export type InventoryItem = {
   engine?: string;
 
   engineVersion?: string;
+
+  latestPatch?: string;
+
+  updateStatus?: string;
+
+  updateObservation?: string;
 
   encrypted?: boolean;
 

@@ -8,6 +8,9 @@ import {
   type ExpectedResource,
 } from "./compliance";
 
+const UX_LOGO_SRC =
+  "https://i0.wp.com/ux.technology/wp-content/uploads/2023/08/Logo-UX-Technology.png?fit=150%2C80&ssl=1";
+
 export type RdsSnapshotDetail = {
   snapshotName: string;
   snapshotId: string;
@@ -22,10 +25,15 @@ export type RdsInstanceDetail = {
   dbInstanceName: string;
   dbInstanceId: string;
   engine: string;
+  region: string;
   totalSnapshots: number;
   lastSnapshot: string | null;
   coverage: Coverage;
   snapshots: RdsSnapshotDetail[];
+  matchedViaCluster?: boolean;
+  dbStatus?: string;
+  weekendExempt?: boolean;
+  isExpected?: boolean; // true if this instance is in the expected (inventory) list
 };
 
 export type RdsAccountDetail = {
@@ -63,16 +71,26 @@ export type RdsInformeData = {
   aws: RdsProviderReport;
   huawei: RdsProviderReport;
   globalSummary: {
-    totalSnapshots: number;
-    totalBytes: number;
-    successRate: number;
-    failureRate: number;
+    totalAllDatabases: number;
+    excludedDatabases: number;
+    excludedNames: string[];
+    excludedReasons: Record<string, string>;
+    excludedAccounts: Record<string, string>;
+    excludedWeekend: Array<{ name: string; account: string; reason: string }>;
+    excludedPermanent: Array<{ name: string; account: string; reason: string }>;
     expectedDatabases: number;
     coveredDatabases: number;
     missingDatabases: number;
     coveragePct: number;
+    totalBytes: number;
   };
 };
+
+const STOPPED_STATUSES = new Set(["stopped", "inactive", "unavailable"]);
+
+function isStopped(status?: string): boolean {
+  return !!status && STOPPED_STATUSES.has(status.toLowerCase());
+}
 
 const OK = new Set(["COMPLETED", "AVAILABLE"]);
 const FAILED = new Set(["FAILED", "ERROR"]);
@@ -154,15 +172,18 @@ function rdsCoverageOf(status: string): Coverage {
   return OK.has(status.toUpperCase()) ? "OK" : "FAILED";
 }
 
-function rdsMissingInstance(exp: ExpectedResource): RdsInstanceDetail {
+function rdsMissingInstance(exp: ExpectedResource, region?: string): RdsInstanceDetail {
   return {
     dbInstanceName: exp.resourceName,
     dbInstanceId: exp.resourceId,
     engine: "",
+    region: region || "",
     totalSnapshots: 0,
     lastSnapshot: null,
     coverage: "MISSING",
     snapshots: [],
+    dbStatus: exp.dbStatus || undefined,
+    isExpected: true,
   };
 }
 
@@ -173,14 +194,24 @@ function rdsMissingInstance(exp: ExpectedResource): RdsInstanceDetail {
 export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInformeData> {
   const target = day || getPreviousDayBogota();
   const now = new Date();
-  const expected = await getExpectedDatabases();
+  let expected = await getExpectedDatabases();
+  const totalAllDatabases = expected.length;
 
-  const byAccount = new Map<string, { provider: string; accountId: string; accountName: string; expected: ExpectedResource[] }>();
+  // Apply database exceptions (exclude dev/test DBs from compliance counts)
+  const { filterExcludedDatabases } = await import("@/lib/email/db-exceptions");
+  const { isWeekend } = await import("@/lib/backups/date-utils");
+  const targetIsWeekend = isWeekend(target.ymd);
+  const { included, excludedNames, excludedReasons, weekendExemptNames, excludedWeekendItems, excludedPermanentItems } = await filterExcludedDatabases(expected, (e) => e.resourceName, targetIsWeekend, (e) => e.accountName, (e) => e.accountId);
+  const excludedCount = excludedNames.length;
+  expected = included;
+  const weekendExemptSet = new Set(weekendExemptNames.map((n) => n.toLowerCase()));
+
+  const byAccount = new Map<string, { provider: string; accountId: string; accountName: string; region: string; expected: ExpectedResource[] }>();
   for (const exp of expected) {
-    const key = accountKey(exp.provider, exp.accountId);
+    const key = accountKey(exp.provider, exp.accountId, exp.region);
     let entry = byAccount.get(key);
     if (!entry) {
-      entry = { provider: exp.provider, accountId: exp.accountId, accountName: exp.accountName, expected: [] };
+      entry = { provider: exp.provider, accountId: exp.accountId, accountName: exp.accountName, region: exp.region || "", expected: [] };
       byAccount.set(key, entry);
     }
     entry.expected.push(exp);
@@ -196,7 +227,7 @@ export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInform
 
   const windowByAccount = new Map<string, typeof windowRes.rows>();
   for (const row of windowRes.rows) {
-    const key = accountKey(row.provider, row.account_id);
+    const key = accountKey(row.provider, row.account_id, row.region);
     const list = windowByAccount.get(key);
     if (list) list.push(row);
     else windowByAccount.set(key, [row]);
@@ -209,6 +240,7 @@ export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInform
         provider: first.provider,
         accountId: first.account_id,
         accountName: first.account_name || "N/A",
+        region: first.region || "",
         expected: [],
       });
     }
@@ -218,7 +250,7 @@ export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInform
     const providerEntries = [...byAccount.values()].filter((a) => a.provider === provider);
 
     const accounts = providerEntries.map((acc) => {
-      const rows = windowByAccount.get(accountKey(acc.provider, acc.accountId)) || [];
+      const rows = windowByAccount.get(accountKey(acc.provider, acc.accountId, acc.region)) || [];
       const byInstance = new Map<string, WindowRdsRow[]>();
       for (const r of rows) {
         const list = byInstance.get(r.db_instance_id);
@@ -227,6 +259,7 @@ export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInform
       }
 
       const seen = new Set<string>();
+      const processedClusters = new Set<string>(); // Track Aurora/DocumentDB clusters already processed
       const instances: RdsInstanceDetail[] = [];
       let ok = 0;
       let failed = 0;
@@ -235,8 +268,19 @@ export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInform
       const engines = new Set<string>();
       let last: string | null = null;
 
-      const toSnaps = (recs: WindowRdsRow[]): RdsSnapshotDetail[] =>
-        recs.slice(0, 20).map((r) => ({
+      const toSnaps = (recs: WindowRdsRow[]): RdsSnapshotDetail[] => {
+        // For Huawei RDS, there can be many incremental backups per day.
+        // Keep only the latest incremental per instance, plus any full backups.
+        const isHuawei = acc.provider === "HUAWEI CLOUD";
+        let filtered = recs;
+        if (isHuawei) {
+          // Group by snapshot_type; for incremental, keep only the latest (first in DESC order)
+          const fullBackups = recs.filter((r) => (r.snapshot_type || "").toLowerCase() !== "incremental");
+          const incrementalBackups = recs.filter((r) => (r.snapshot_type || "").toLowerCase() === "incremental");
+          // Keep only the latest incremental (recs are sorted by snapshot_created_at DESC)
+          filtered = [...fullBackups, ...incrementalBackups.slice(0, 1)];
+        }
+        return filtered.slice(0, 20).map((r) => ({
           snapshotName: r.snapshot_name || r.snapshot_id,
           snapshotId: r.snapshot_id,
           snapshotType: r.snapshot_type || "",
@@ -245,21 +289,88 @@ export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInform
           snapshotCreatedAt: r.snapshot_created_at ? new Date(r.snapshot_created_at).toISOString() : null,
           snapshotCompletedAt: r.snapshot_completed_at ? new Date(r.snapshot_completed_at).toISOString() : null,
         }));
+      };
 
       for (const exp of acc.expected) {
+        // Aurora/DocumentDB cluster deduplication:
+        // If this instance belongs to a cluster that's already been processed, skip it.
+        // Only the first instance per cluster is shown (using cluster name as display name).
+        if (exp.clusterId) {
+          const clusterKey = accountKey(acc.provider, acc.accountId, acc.region) + "||" + exp.clusterId.toLowerCase();
+          if (processedClusters.has(clusterKey)) {
+            // Skip duplicate cluster instance — already counted via the first instance
+            continue;
+          }
+          processedClusters.add(clusterKey);
+        }
+
+        // For Aurora/DocumentDB clusters, use clusterId as the display name
+        const displayName = exp.clusterId || exp.resourceName;
+        const displayId = exp.clusterId || exp.resourceId;
+
         let recs = byInstance.get(exp.resourceId);
         let usedId = exp.resourceId;
+        let matchedViaCluster = false;
+
         if (!recs) {
+          // Fallback 1: match by instance name
           const byName = [...byInstance.entries()].find(
             ([, v]) => (v[0].db_instance_name || "").toLowerCase() === exp.resourceName.toLowerCase(),
           );
-          if (!byName) {
-            instances.push(rdsMissingInstance(exp));
-            missing++;
-            continue;
+          if (byName) {
+            usedId = byName[0];
+            recs = byName[1];
           }
-          usedId = byName[0];
-          recs = byName[1];
+        }
+
+        // Fallback 2: if this instance belongs to a cluster, check for cluster snapshot
+        if (!recs && exp.clusterId) {
+          const clusterRecs = byInstance.get(exp.clusterId);
+          if (clusterRecs) {
+            recs = clusterRecs;
+            usedId = exp.clusterId;
+            matchedViaCluster = true;
+          } else {
+            // Try cluster name as db_instance_name
+            const byClusterName = [...byInstance.entries()].find(
+              ([, v]) => (v[0].db_instance_name || "").toLowerCase() === exp.clusterId!.toLowerCase(),
+            );
+            if (byClusterName) {
+              recs = byClusterName[1];
+              usedId = byClusterName[0];
+              matchedViaCluster = true;
+            }
+          }
+        }
+
+        if (!recs) {
+          // Weekend-exempt DBs on weekends: not "missing", just skipped
+          if (targetIsWeekend && (weekendExemptSet.has(exp.resourceName.toLowerCase()) || (exp.clusterId && weekendExemptSet.has(exp.clusterId.toLowerCase())))) {
+            // Mark as OK with a special note — DB is off on weekends, no backup expected
+            instances.push({
+              dbInstanceName: displayName,
+              dbInstanceId: displayId,
+              engine: "",
+              region: acc.region,
+              totalSnapshots: 0,
+              lastSnapshot: null,
+              coverage: "OK",
+              snapshots: [],
+              weekendExempt: true,
+              isExpected: true,
+              matchedViaCluster: !!exp.clusterId,
+            });
+            ok++;
+          } else {
+            instances.push({
+              ...rdsMissingInstance(exp, acc.region),
+              dbInstanceName: displayName,
+              dbInstanceId: displayId,
+              matchedViaCluster: !!exp.clusterId,
+            });
+            missing++;
+          }
+          continue;
         }
         seen.add(usedId);
         const cov: Coverage = recs.some((r) => OK.has(r.status.toUpperCase())) ? "OK" : "FAILED";
@@ -267,18 +378,25 @@ export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInform
         if (eng) engines.add(eng);
         if (cov === "OK") {
           ok++;
-          bytes += recs.filter((r) => OK.has(r.status.toUpperCase())).reduce((a, r) => a + Number(r.size_bytes || 0), 0);
+          // For bytes, use only the snapshots that toSnaps would show (deduplicated)
+          const dedupedSnaps = toSnaps(recs);
+          const dedupedIds = new Set(dedupedSnaps.map((s) => s.snapshotId));
+          bytes += recs.filter((r) => dedupedIds.has(r.snapshot_id)).reduce((a, r) => a + Number(r.size_bytes || 0), 0);
         } else failed++;
         const lastRec = recs[0]?.snapshot_created_at || null;
         if (lastRec && (!last || lastRec > last)) last = lastRec;
         instances.push({
-          dbInstanceName: exp.resourceName,
-          dbInstanceId: exp.resourceId,
+          dbInstanceName: displayName,
+          dbInstanceId: displayId,
           engine: eng,
-          totalSnapshots: recs.length,
+          region: acc.region,
+          totalSnapshots: toSnaps(recs).length,
           lastSnapshot: lastRec ? new Date(lastRec).toISOString() : null,
           coverage: cov,
           snapshots: toSnaps(recs),
+          matchedViaCluster: matchedViaCluster || !!exp.clusterId,
+          dbStatus: exp.dbStatus || undefined,
+          isExpected: true,
         });
       }
 
@@ -286,16 +404,22 @@ export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInform
         if (seen.has(iid)) continue;
         const cov: Coverage = recs.some((r) => OK.has(r.status.toUpperCase())) ? "OK" : "FAILED";
         const first = recs[0];
-        if (cov === "OK") bytes += recs.filter((r) => OK.has(r.status.toUpperCase())).reduce((a, r) => a + Number(r.size_bytes || 0), 0);
+        if (cov === "OK") {
+          const dedupedSnaps = toSnaps(recs);
+          const dedupedIds = new Set(dedupedSnaps.map((s) => s.snapshotId));
+          bytes += recs.filter((r) => dedupedIds.has(r.snapshot_id)).reduce((a, r) => a + Number(r.size_bytes || 0), 0);
+        }
         if (first.engine) engines.add(first.engine);
         instances.push({
           dbInstanceName: first.db_instance_name || iid,
           dbInstanceId: iid,
           engine: first.engine || "",
-          totalSnapshots: recs.length,
+          region: acc.region,
+          totalSnapshots: toSnaps(recs).length,
           lastSnapshot: first.snapshot_created_at ? new Date(first.snapshot_created_at).toISOString() : null,
           coverage: cov,
           snapshots: toSnaps(recs),
+          isExpected: false,
         });
       }
 
@@ -304,23 +428,29 @@ export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInform
         return rank(a.coverage) - rank(b.coverage) || a.dbInstanceName.localeCompare(b.dbInstanceName);
       });
 
-      const totalSnapshots = rows.length;
-      const successful = rows.filter((r) => OK.has((r.status || "").toUpperCase())).length;
-      const failedCount = rows.filter((r) => FAILED.has((r.status || "").toUpperCase())).length;
-      const inProgress = rows.filter((r) => IN_PROGRESS.has((r.status || "").toUpperCase())).length;
-      const totalInstances = acc.expected.length;
+      // Count unique instances with backup rows (for "no data" check)
+      const uniqueInstancesWithBackup = new Set(rows.map((r) => r.db_instance_id)).size;
+      // After Aurora cluster deduplication, totalInstances = ok + failed + missing
+      // (not acc.expected.length which counts pre-dedup instances)
+      const totalInstances = ok + failed + missing;
+      // Per-account indicators: only count expected instances (isExpected !== false)
+      // ok = expected instances with coverage OK
+      // failed = expected instances with coverage FAILED (backup exists but failed)
+      // missing = expected instances with coverage MISSING (no backup at all)
+      // "Sin backup" = failed + missing (all non-OK expected instances)
+      const sinBackup = failed + missing;
 
       return {
         accountId: acc.accountId,
         accountName: acc.accountName,
         region: rows[0]?.region || "",
-        totalSnapshots,
-        successfulSnapshots: successful,
-        failedSnapshots: failedCount,
-        inProgressSnapshots: inProgress,
+        totalSnapshots: uniqueInstancesWithBackup,
+        successfulSnapshots: ok,
+        failedSnapshots: failed,
+        inProgressSnapshots: 0,
         engines: [...engines],
         instanceCount: totalInstances,
-        missingInstances: missing,
+        missingInstances: sinBackup,
         coveragePct: totalInstances ? Math.round((ok / totalInstances) * 100) : 0,
         lastSnapshot: last ? new Date(last).toISOString() : null,
         instances,
@@ -344,8 +474,8 @@ export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInform
       successfulTotal,
       failedTotal,
       inProgressTotal,
-      successRate: totalSnapshots ? Math.round((successfulTotal / totalSnapshots) * 100) : 0,
-      failureRate: totalSnapshots ? Math.round((failedTotal / totalSnapshots) * 100) : 0,
+      successRate: accounts.reduce((a, c) => a + c.instanceCount, 0) ? Math.round((accounts.reduce((a, c) => a + c.instances.filter((i) => i.isExpected !== false && i.coverage === "OK").length, 0) / accounts.reduce((a, c) => a + c.instanceCount, 0)) * 100) : 0,
+      failureRate: accounts.reduce((a, c) => a + c.instanceCount, 0) ? Math.round((accounts.reduce((a, c) => a + c.missingInstances, 0) / accounts.reduce((a, c) => a + c.instanceCount, 0)) * 100) : 0,
     };
   }
 
@@ -355,11 +485,11 @@ export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInform
   const expectedDatabases =
     aws.accounts.reduce((a, c) => a + c.instanceCount, 0) + huawei.accounts.reduce((a, c) => a + c.instanceCount, 0);
   const coveredDatabases =
-    aws.accounts.reduce((a, c) => a + c.instances.filter((i) => i.coverage === "OK").length, 0) +
-    huawei.accounts.reduce((a, c) => a + c.instances.filter((i) => i.coverage === "OK").length, 0);
-  const globalTotal = aws.totalSnapshots + huawei.totalSnapshots;
-  const globalOk = aws.successfulTotal + huawei.successfulTotal;
-  const globalFailed = aws.failedTotal + huawei.failedTotal;
+    aws.accounts.reduce((a, c) => a + c.instances.filter((i) => i.isExpected !== false && i.coverage === "OK").length, 0) +
+    huawei.accounts.reduce((a, c) => a + c.instances.filter((i) => i.isExpected !== false && i.coverage === "OK").length, 0);
+  const failedDatabases =
+    aws.accounts.reduce((a, c) => a + c.instances.filter((i) => i.isExpected !== false && i.coverage !== "OK").length, 0) +
+    huawei.accounts.reduce((a, c) => a + c.instances.filter((i) => i.isExpected !== false && i.coverage !== "OK").length, 0);
   const globalBytes = aws.totalBytes + huawei.totalBytes;
 
   return {
@@ -369,14 +499,28 @@ export async function generateRdsInformeData(day?: DayWindow): Promise<RdsInform
     aws,
     huawei,
     globalSummary: {
-      totalSnapshots: globalTotal,
-      totalBytes: globalBytes,
-      successRate: globalTotal ? Math.round((globalOk / globalTotal) * 100) : 0,
-      failureRate: globalTotal ? Math.round((globalFailed / globalTotal) * 100) : 0,
+      totalAllDatabases,
+      excludedDatabases: excludedCount,
+      excludedNames,
+      excludedReasons: Object.fromEntries(excludedReasons),
+      excludedAccounts: Object.fromEntries(
+        excludedWeekendItems.concat(excludedPermanentItems).map((item) => [item.name, item.account])
+      ),
+      excludedWeekend: excludedWeekendItems.map((item) => ({
+        name: item.name,
+        account: item.account,
+        reason: item.reason,
+      })),
+      excludedPermanent: excludedPermanentItems.map((item) => ({
+        name: item.name,
+        account: item.account,
+        reason: item.reason,
+      })),
       expectedDatabases,
       coveredDatabases,
-      missingDatabases: Math.max(0, expectedDatabases - coveredDatabases),
+      missingDatabases: failedDatabases,
       coveragePct: expectedDatabases ? Math.round((coveredDatabases / expectedDatabases) * 100) : 0,
+      totalBytes: globalBytes,
     },
   };
 }
@@ -387,100 +531,89 @@ function providerGradient(provider: string): string {
     : "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)";
 }
 
+function formatDateYMD(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const y = d.toLocaleDateString("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return y.replace(/-/g, "/");
+}
+
 function renderProviderSection(report: RdsProviderReport): string {
   const gradient = providerGradient(report.provider);
   const providerLabel = report.provider === "AWS" ? "AWS" : "Huawei Cloud";
 
   const accountSections = report.accounts
     .map((acc) => {
-      const missingBanner = acc.missingInstances > 0
-        ? `<p style="font-size:12px;font-weight:600;color:#ef4444;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;margin:0 0 12px;">⚠ ${acc.missingInstances} base(s) de datos SIN BACKUP en esta cuenta</p>`
-        : "";
-      const instanceBlocks = acc.instances
-        .map((inst) => {
-          if (inst.coverage === "MISSING") {
-            return `
-      <div style="margin-bottom:20px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%">
+      // Build flat rows: one row per snapshot (or one row for MISSING instances)
+      const rows: string[] = [];
+      for (const inst of acc.instances) {
+        if (inst.coverage === "MISSING") {
+          const stoppedBadge = isStopped(inst.dbStatus);
+          const statusLabel = stoppedBadge ? "Sin backup (db apagada)" : "SIN BACKUP";
+          const statusBgColor = stoppedBadge ? "#f59e0b" : "#ef4444";
+          const rowBg = stoppedBadge ? "background:#fffbeb;" : "background:#fef2f2;";
+          const textColor = stoppedBadge ? "#92400e" : "#b91c1c";
+          rows.push(`<tr style="${rowBg}">
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;font-weight:600;color:${textColor};">${esc(inst.dbInstanceName)}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;color:${textColor};">—</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;color:${textColor};">—</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;color:${textColor};">${esc(inst.region)}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;"><span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:700;color:#ffffff;background:${statusBgColor};">${statusLabel}</span></td>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;color:${textColor};">—</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;color:${textColor};text-align:right;">—</td>
+          </tr>`);
+          continue;
+        }
+        for (const s of inst.snapshots) {
+          const sc = statusColor(s.status);
+          const sb = statusBg(s.status);
+          const clusterBadge = inst.matchedViaCluster ? ' <span style="display:inline-block;padding:1px 5px;border-radius:9999px;font-size:9px;font-weight:600;color:#0e7490;background:#ecfeff;">cluster</span>' : "";
+          rows.push(`<tr>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;font-weight:500;color:#1f2937;">${esc(inst.dbInstanceName)}${clusterBadge}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280;font-family:monospace;">${esc(s.snapshotId)}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280;">${esc(s.snapshotType || "—")}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280;">${esc(inst.region)}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;"><span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:600;color:${sc};background:${sb};">${esc(s.status)}</span></td>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280;white-space:nowrap;">${formatDateYMD(s.snapshotCreatedAt)}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280;text-align:right;white-space:nowrap;">${s.sizeBytes !== null && s.sizeBytes > 0 ? formatBytes(s.sizeBytes) : "—"}</td>
+          </tr>`);
+        }
+      }
+
+      // Account summary stats
+      const totalInstances = acc.instanceCount;
+      const exitosos = acc.instances.filter((i) => i.isExpected !== false && i.coverage === "OK").length;
+      const fallidos = acc.instances.filter((i) => i.isExpected !== false && (i.coverage === "FAILED" || i.coverage === "MISSING")).length;
+      const coberturaPct = totalInstances ? Math.round((exitosos / totalInstances) * 100) : 0;
+
+      return `
+      <div style="margin-bottom:24px;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:8px;">
           <tr>
-            <td style="font-size:14px;font-weight:700;color:#b91c1c;">${esc(inst.dbInstanceName)}</td>
-            <td align="right"><span style="display:inline-block;padding:2px 10px;border-radius:9999px;font-size:11px;font-weight:700;color:#ffffff;background:#ef4444;">SIN BACKUP</span></td>
-          </tr>
-        </table>
-        <p style="font-size:12px;color:#b91c1c;margin:6px 0 0;">No se generó snapshot de esta base de datos el día anterior (${esc(inst.dbInstanceId)}).</p>
-      </div>`;
-          }
-          const rows = inst.snapshots
-            .map((s) => {
-              const sc = statusColor(s.status);
-              const sb = statusBg(s.status);
-              return `<tr>
-            <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:500;color:#1f2937;">${esc(s.snapshotName)}</td>
-            <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;">${esc(s.snapshotType || "—")}</td>
-            <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;"><span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;color:${sc};background:${sb};">${esc(s.status)}</span></td>
-            <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;white-space:nowrap;">${formatDateShort(s.snapshotCreatedAt)}</td>
-            <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:right;white-space:nowrap;">${s.sizeBytes !== null ? formatBytes(s.sizeBytes) : "—"}</td>
-          </tr>`;
-            })
-            .join("");
-          const more = inst.totalSnapshots > inst.snapshots.length
-            ? `<p style="font-size:12px;color:#9ca3af;margin:8px 0 0;">…y ${inst.totalSnapshots - inst.snapshots.length} snapshots anteriores.</p>`
-            : "";
-          return `
-      <div style="margin-bottom:20px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:10px;">
-          <tr>
-            <td style="font-size:14px;font-weight:600;color:#1f2937;">${esc(inst.dbInstanceName)}</td>
-            <td align="right" style="font-size:12px;color:#9ca3af;">${esc(inst.engine)} · ${inst.totalSnapshots} snapshots</td>
+            <td style="font-size:15px;font-weight:700;color:#1f2937;">${esc(acc.accountName)}</td>
+            <td align="right" style="font-size:11px;color:#9ca3af;">${esc(acc.accountId)} · ${esc(acc.region)} · Total: ${totalInstances} · Exitosos: ${exitosos} · Fallidos: ${fallidos} · Cobertura: ${coberturaPct}%</td>
           </tr>
         </table>
         <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
           <thead>
             <tr style="background:#f9fafb;">
-              <th align="left" style="padding:8px 10px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Snapshot</th>
-              <th align="left" style="padding:8px 10px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Tipo</th>
-              <th align="left" style="padding:8px 10px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Estado</th>
-              <th align="left" style="padding:8px 10px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Fecha</th>
-              <th align="right" style="padding:8px 10px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Tamaño</th>
+              <th align="left" style="padding:8px 10px;font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Nombre</th>
+              <th align="left" style="padding:8px 10px;font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Snapshot</th>
+              <th align="left" style="padding:8px 10px;font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Tipo</th>
+              <th align="left" style="padding:8px 10px;font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Región</th>
+              <th align="left" style="padding:8px 10px;font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Estado</th>
+              <th align="left" style="padding:8px 10px;font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Fecha</th>
+              <th align="right" style="padding:8px 10px;font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e5e7eb;">Tamaño</th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody>${rows.join("")}</tbody>
         </table>
-        ${more}
-      </div>`;
-        })
-        .join("");
-
-      return `
-      <div style="margin-bottom:24px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:12px;">
-          <tr>
-            <td style="font-size:15px;font-weight:600;color:#1f2937;">${esc(acc.accountName)}</td>
-            <td align="right" style="font-size:12px;color:#9ca3af;">${esc(acc.accountId)} · ${esc(acc.region)}</td>
-          </tr>
-        </table>
-        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:16px;">
-          <tr>
-            <td width="25%" style="padding:10px 12px;background:#f9fafb;border-radius:6px 0 0 6px;border-right:1px solid #e5e7eb;">
-              <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Snapshots</div>
-              <div style="font-size:20px;font-weight:700;color:#1f2937;margin-top:2px;">${acc.totalSnapshots}</div>
-            </td>
-            <td width="25%" style="padding:10px 12px;background:#f9fafb;border-right:1px solid #e5e7eb;">
-              <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Exitosos</div>
-              <div style="font-size:20px;font-weight:700;color:#10b981;margin-top:2px;">${acc.successfulSnapshots}</div>
-            </td>
-            <td width="25%" style="padding:10px 12px;background:#f9fafb;border-right:1px solid #e5e7eb;">
-              <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Fallidos</div>
-              <div style="font-size:20px;font-weight:700;color:#ef4444;margin-top:2px;">${acc.failedSnapshots}</div>
-            </td>
-            <td width="25%" style="padding:10px 12px;background:#f9fafb;border-radius:0 6px 6px 0;">
-              <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Instancias</div>
-              <div style="font-size:20px;font-weight:700;color:#1f2937;margin-top:2px;">${acc.instanceCount}</div>
-            </td>
-          </tr>
-        </table>
-        ${missingBanner}
-        ${instanceBlocks || `<p style="font-size:13px;color:#9ca3af;margin:0;">Sin snapshots registrados.</p>`}
       </div>`;
     })
     .join("");
@@ -492,10 +625,10 @@ function renderProviderSection(report: RdsProviderReport): string {
         <tr>
           <td>
             <span style="font-size:18px;font-weight:700;color:#ffffff;">${providerLabel}</span>
-            <span style="font-size:13px;color:rgba(255,255,255,0.8);margin-left:12px;">${report.accounts.length} cuenta(s) · ${report.totalSnapshots} snapshots · ${formatBytes(report.totalBytes)}</span>
+            <span style="font-size:13px;color:rgba(255,255,255,0.8);margin-left:12px;">${report.accounts.length} cuenta(s) · ${formatBytes(report.totalBytes)}</span>
           </td>
           <td align="right">
-            <span style="display:inline-block;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600;color:#ffffff;background:rgba(255,255,255,0.2);">Tasa éxito: ${report.successRate}%</span>
+            <span style="display:inline-block;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600;color:#ffffff;background:rgba(255,255,255,0.2);">Cobertura: ${report.successRate}%</span>
           </td>
         </tr>
       </table>
@@ -505,7 +638,6 @@ function renderProviderSection(report: RdsProviderReport): string {
     </div>
   </div>`;
 }
-
 export function generateRdsEmailHtml(data: RdsInformeData): string {
   const { aws, huawei, globalSummary, dateLabel } = data;
 
@@ -518,18 +650,21 @@ export function generateRdsEmailHtml(data: RdsInformeData): string {
 </head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
 <center style="width:100%;padding:24px 0;">
-<table cellpadding="0" cellspacing="0" border="0" width="680" style="max-width:680px;width:100%;">
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:960px;width:100%;margin:0 auto;">
 
   <tr>
-    <td style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);padding:28px 32px;border-radius:12px 12px 0 0;">
+    <td bgcolor="#0f172a" style="background:#0f172a;padding:24px 32px;border-radius:12px 12px 0 0;">
       <table cellpadding="0" cellspacing="0" border="0" width="100%">
         <tr>
-          <td style="vertical-align:middle;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">MC Inventory</div>
-            <div style="font-size:13px;color:#94a3b8;margin-top:2px;">Informe diario de backups de bases de datos</div>
+          <td style="vertical-align:middle;width:1%;white-space:nowrap;padding-right:16px;">
+            <img src="${UX_LOGO_SRC}" alt="UX Technology" width="120" height="70" style="display:block;border-radius:10px;">
           </td>
-          <td align="right" style="vertical-align:middle;">
-            <div style="font-size:12px;color:#94a3b8;">${esc(dateLabel)}</div>
+          <td style="vertical-align:middle;">
+            <div style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">MC Inventory</div>
+            <div style="font-size:14px;color:#cbd5e1;margin-top:3px;">Informe diario de backups de bases de datos</div>
+          </td>
+          <td align="right" style="vertical-align:middle;white-space:nowrap;">
+            <div style="font-size:13px;color:#94a3b8;">${esc(dateLabel)}</div>
           </td>
         </tr>
       </table>
@@ -539,25 +674,38 @@ export function generateRdsEmailHtml(data: RdsInformeData): string {
   <tr>
     <td style="background:#ffffff;padding:24px 32px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">
       <div style="font-size:16px;font-weight:600;color:#1f2937;margin-bottom:6px;">Resumen ejecutivo — día anterior</div>
-      <div style="font-size:12px;color:#6b7280;margin-bottom:16px;">Cobertura: ${globalSummary.coveredDatabases}/${globalSummary.expectedDatabases} bases de datos con snapshot (${globalSummary.coveragePct}%)</div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:16px;">Cobertura: ${globalSummary.coveredDatabases}/${globalSummary.expectedDatabases} bases de datos con backup exitoso (${globalSummary.coveragePct}%)${globalSummary.excludedDatabases > 0 ? ` · Excepciones: ${globalSummary.excludedDatabases} DBs excluidas` : ""}</div>
       ${globalSummary.missingDatabases > 0 ? `<div style="font-size:13px;font-weight:700;color:#ffffff;background:#ef4444;border-radius:8px;padding:12px 16px;margin-bottom:16px;">⚠ ${globalSummary.missingDatabases} BASE(S) DE DATOS SIN BACKUP — revisar detalle en rojo</div>` : `<div style="font-size:13px;font-weight:600;color:#065f46;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:12px 16px;margin-bottom:16px;">✓ Todas las bases de datos tienen snapshot del día anterior</div>`}
       <table cellpadding="0" cellspacing="0" border="0" width="100%">
         <tr>
-          <td width="25%" style="padding:12px 14px;background:#f9fafb;border-radius:8px 0 0 8px;border-right:1px solid #e5e7eb;">
-            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Total snapshots</div>
-            <div style="font-size:24px;font-weight:700;color:#1f2937;margin-top:4px;">${globalSummary.totalSnapshots}</div>
+          <td width="17%" style="padding:12px 14px;background:#f9fafb;border-radius:8px 0 0 0;border-right:1px solid #e5e7eb;">
+            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Total BDs</div>
+            <div style="font-size:24px;font-weight:700;color:#1f2937;margin-top:4px;">${globalSummary.totalAllDatabases}</div>
           </td>
-          <td width="25%" style="padding:12px 14px;background:#f9fafb;border-right:1px solid #e5e7eb;">
-            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Volumen total</div>
-            <div style="font-size:24px;font-weight:700;color:#1f2937;margin-top:4px;">${formatBytes(globalSummary.totalBytes)}</div>
+          <td width="17%" style="padding:12px 14px;background:#f9fafb;border-right:1px solid #e5e7eb;">
+            <div style="font-size:11px;color:#f59e0b;text-transform:uppercase;letter-spacing:0.5px;">Excepciones</div>
+            <div style="font-size:24px;font-weight:700;color:#f59e0b;margin-top:4px;">${globalSummary.excludedDatabases}</div>
           </td>
-          <td width="25%" style="padding:12px 14px;background:#f9fafb;border-right:1px solid #e5e7eb;">
-            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Tasa de éxito</div>
-            <div style="font-size:24px;font-weight:700;color:#10b981;margin-top:4px;">${globalSummary.successRate}%</div>
+          <td width="17%" style="padding:12px 14px;background:#f9fafb;border-right:1px solid #e5e7eb;">
+            <div style="font-size:11px;color:#06b6d4;text-transform:uppercase;letter-spacing:0.5px;">En plan</div>
+            <div style="font-size:24px;font-weight:700;color:#06b6d4;margin-top:4px;">${globalSummary.expectedDatabases}</div>
           </td>
-          <td width="25%" style="padding:12px 14px;background:#f9fafb;border-radius:0 8px 8px 0;">
-            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Tasa de fallo</div>
-            <div style="font-size:24px;font-weight:700;color:#ef4444;margin-top:4px;">${globalSummary.failureRate}%</div>
+          <td width="17%" style="padding:12px 14px;background:#f9fafb;border-right:1px solid #e5e7eb;">
+            <div style="font-size:11px;color:#10b981;text-transform:uppercase;letter-spacing:0.5px;">Exitosos</div>
+            <div style="font-size:24px;font-weight:700;color:#10b981;margin-top:4px;">${globalSummary.coveredDatabases}</div>
+          </td>
+          <td width="16%" style="padding:12px 14px;background:#f9fafb;border-right:1px solid #e5e7eb;">
+            <div style="font-size:11px;color:#ef4444;text-transform:uppercase;letter-spacing:0.5px;">Fallidos</div>
+            <div style="font-size:24px;font-weight:700;color:#ef4444;margin-top:4px;">${globalSummary.missingDatabases}</div>
+          </td>
+          <td width="16%" style="padding:12px 14px;background:#f9fafb;border-radius:0 8px 0 0;">
+            <div style="font-size:11px;color:#10b981;text-transform:uppercase;letter-spacing:0.5px;">Cobertura</div>
+            <div style="font-size:24px;font-weight:700;color:#10b981;margin-top:4px;">${globalSummary.coveragePct}%</div>
+          </td>
+        </tr>
+      </table>
+      ${globalSummary.excludedDatabases > 0 ? `<div style="margin-top:12px;padding:10px 14px;background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;font-size:11px;color:#92400e;"><div style="font-weight:600;margin-bottom:4px;">Excepciones de bases de datos</div><div style="margin-bottom:8px;font-size:10px;color:#78350f;">Bases de datos de desarrollo, prueba o temporales que no requieren backup. Se excluyen de los conteos de cumplimiento del informe de Bases de Datos.</div>${globalSummary.excludedWeekend.length > 0 ? `<div style="margin-bottom:6px;"><div style="font-weight:600;margin-bottom:4px;">Excepciones de fin de semana (${globalSummary.excludedWeekend.length}):</div>${globalSummary.excludedWeekend.map(item => `<div style="margin:2px 0;padding:2px 0;">• Cuenta: <strong>${esc(item.account)}</strong> | Base de datos: <strong>${esc(item.name)}</strong> | Motivo: <span style="color:#78350f;">${esc(item.reason)}</span></div>`).join("")}</div>` : ""}${globalSummary.excludedPermanent.length > 0 ? `<div><div style="font-weight:600;margin-bottom:4px;">Excepciones permanentes (${globalSummary.excludedPermanent.length}):</div>${globalSummary.excludedPermanent.map(item => `<div style="margin:2px 0;padding:2px 0;">• Cuenta: <strong>${esc(item.account)}</strong> | Base de datos: <strong>${esc(item.name)}</strong> | Motivo: <span style="color:#78350f;">${esc(item.reason)}</span></div>`).join("")}</div>` : ""}</div>` : ""}
+      <div style="margin-top:12px;font-size:11px;color:#9ca3af;">Volumen total: ${formatBytes(globalSummary.totalBytes)}</div>
           </td>
         </tr>
       </table>
@@ -572,7 +720,7 @@ export function generateRdsEmailHtml(data: RdsInformeData): string {
   </tr>
 
   <tr>
-    <td style="background:#1e293b;padding:20px 32px;border-radius:0 0 12px 12px;text-align:center;">
+    <td bgcolor="#1e293b" style="background:#1e293b;padding:20px 32px;border-radius:0 0 12px 12px;text-align:center;">
       <div style="font-size:13px;color:#94a3b8;">UX Technology · MC Inventory</div>
       <div style="font-size:11px;color:#64748b;margin-top:4px;">Informe generado automáticamente · ${esc(dateLabel)}</div>
     </td>
@@ -592,11 +740,13 @@ export function generateRdsEmailText(data: RdsInformeData): string {
   lines.push(dateLabel);
   lines.push("");
   lines.push("=== RESUMEN EJECUTIVO ===");
-  lines.push(`Total snapshots: ${globalSummary.totalSnapshots}`);
+  lines.push(`Total BDs: ${globalSummary.totalAllDatabases}`);
+  lines.push(`Excepciones: ${globalSummary.excludedDatabases}${globalSummary.excludedNames.length > 0 ? `\n${globalSummary.excludedNames.map(n => `  - ${n}${globalSummary.excludedReasons[n] ? ` (${globalSummary.excludedReasons[n]})` : ""}`).join("\n")}` : ""}`);
+  lines.push(`En plan: ${globalSummary.expectedDatabases}`);
+  lines.push(`Exitosos: ${globalSummary.coveredDatabases}`);
+  lines.push(`Fallidos: ${globalSummary.missingDatabases}`);
+  lines.push(`Cobertura: ${globalSummary.coveragePct}%`);
   lines.push(`Volumen total: ${formatBytes(globalSummary.totalBytes)}`);
-  lines.push(`Tasa de éxito: ${globalSummary.successRate}%`);
-  lines.push(`Tasa de fallo: ${globalSummary.failureRate}%`);
-  lines.push(`Cobertura: ${globalSummary.coveredDatabases}/${globalSummary.expectedDatabases} bases de datos (${globalSummary.coveragePct}%)`);
   if (globalSummary.missingDatabases > 0) {
     lines.push(`!!! ${globalSummary.missingDatabases} BASE(S) DE DATOS SIN BACKUP !!!`);
   }
@@ -604,24 +754,31 @@ export function generateRdsEmailText(data: RdsInformeData): string {
 
   function renderProvider(report: RdsProviderReport) {
     lines.push(`=== ${report.provider.toUpperCase()} ===`);
-    lines.push(`Snapshots: ${report.totalSnapshots} | Volumen: ${formatBytes(report.totalBytes)} | Éxito: ${report.successRate}% | Fallo: ${report.failureRate}%`);
+    lines.push(`Volumen: ${formatBytes(report.totalBytes)} | Cobertura: ${report.successRate}%`);
     lines.push("");
     for (const acc of report.accounts) {
-      lines.push(`-- ${acc.accountName} (${acc.accountId}) — ${acc.region} --`);
-      lines.push(`  Snapshots: ${acc.totalSnapshots} | Exitosos: ${acc.successfulSnapshots} | Fallidos: ${acc.failedSnapshots} | Sin backup: ${acc.missingInstances} | Instancias: ${acc.instanceCount}`);
+      const totalInstances = acc.instanceCount;
+      const exitosos = acc.instances.filter((i) => i.isExpected !== false && i.coverage === "OK").length;
+      const fallidos = acc.instances.filter((i) => i.isExpected !== false && (i.coverage === "FAILED" || i.coverage === "MISSING")).length;
+      const coberturaPct = totalInstances ? Math.round((exitosos / totalInstances) * 100) : 0;
+      lines.push(`-- ${acc.accountName} (${acc.accountId}) — ${acc.region} — Total: ${totalInstances} | Exitosos: ${exitosos} | Fallidos: ${fallidos} | Cobertura: ${coberturaPct}% --`);
       lines.push("");
+      lines.push("  Nombre | Snapshot | Tipo | Estado | Fecha | Tamaño");
+      lines.push("  " + "-".repeat(100));
       for (const inst of acc.instances) {
-        const flag = inst.coverage === "MISSING" ? "[SIN BACKUP] " : inst.coverage === "FAILED" ? "[FALLIDO] " : "";
-        lines.push(`  ${flag}${inst.dbInstanceName} [${inst.engine}] — ${inst.totalSnapshots} snapshots`);
+        if (inst.coverage === "MISSING") {
+          const stoppedTag = isStopped(inst.dbStatus) ? " (db apagada)" : "";
+          lines.push(`  ${inst.dbInstanceName} | — | — | ${inst.region} | SIN BACKUP${stoppedTag} | — | —`);
+          continue;
+        }
+        const clusterTag = inst.matchedViaCluster ? " [cluster]" : "";
         for (const s of inst.snapshots) {
-          const size = s.sizeBytes !== null ? formatBytes(s.sizeBytes) : "—";
-          lines.push(`    ${s.snapshotName} | ${s.snapshotType || "—"} | ${s.status} | ${formatDateShort(s.snapshotCreatedAt)} | ${size}`);
+          const size = s.sizeBytes !== null && s.sizeBytes > 0 ? formatBytes(s.sizeBytes) : "—";
+          const date = formatDateYMD(s.snapshotCreatedAt);
+          lines.push(`  ${inst.dbInstanceName}${clusterTag} | ${s.snapshotId} | ${s.snapshotType || "—"} | ${inst.region} | ${s.status} | ${date} | ${size}`);
         }
-        if (inst.totalSnapshots > inst.snapshots.length) {
-          lines.push(`    …y ${inst.totalSnapshots - inst.snapshots.length} anteriores`);
-        }
-        lines.push("");
       }
+      lines.push("");
     }
   }
 
@@ -650,21 +807,26 @@ export function filterRdsInformeData(data: RdsInformeData, provider: "AWS" | "HU
   };
   const aws = provider === "AWS" ? keep : empty;
   const huawei = provider === "HUAWEI CLOUD" ? keep : empty;
-  const covered = keep.accounts.reduce((a, c) => a + c.instances.filter((i) => i.coverage === "OK").length, 0);
+  const covered = keep.accounts.reduce((a, c) => a + c.instances.filter((i) => i.isExpected !== false && i.coverage === "OK").length, 0);
   const expectedCount = keep.accounts.reduce((a, c) => a + c.instanceCount, 0);
+  const failedCount = keep.accounts.reduce((a, c) => a + c.instances.filter((i) => i.isExpected !== false && i.coverage !== "OK").length, 0);
   return {
     ...data,
     aws,
     huawei,
     globalSummary: {
-      totalSnapshots: keep.totalSnapshots,
-      totalBytes: keep.totalBytes,
-      successRate: keep.successRate,
-      failureRate: keep.failureRate,
+      totalAllDatabases: expectedCount + data.globalSummary.excludedDatabases,
+      excludedDatabases: data.globalSummary.excludedDatabases,
+      excludedNames: data.globalSummary.excludedNames,
+      excludedReasons: data.globalSummary.excludedReasons,
+      excludedAccounts: data.globalSummary.excludedAccounts,
+      excludedWeekend: data.globalSummary.excludedWeekend,
+      excludedPermanent: data.globalSummary.excludedPermanent,
       expectedDatabases: expectedCount,
       coveredDatabases: covered,
-      missingDatabases: Math.max(0, expectedCount - covered),
+      missingDatabases: failedCount,
       coveragePct: expectedCount ? Math.round((covered / expectedCount) * 100) : 0,
+      totalBytes: keep.totalBytes,
     },
   };
 }

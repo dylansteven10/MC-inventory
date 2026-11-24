@@ -93,6 +93,7 @@ export default function Home() {
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
   const [onlyWithoutTags, setOnlyWithoutTags] = useState(false);
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -167,43 +168,81 @@ export default function Home() {
     [data, selectedProviders],
   );
 
+  /* ── Clear downstream filters when provider changes ── */
+  const prevProvidersRef = useRef<string[]>([]);
+  useEffect(() => {
+    const prev = prevProvidersRef.current;
+    const changed =
+      prev.length !== selectedProviders.length ||
+      prev.some((v, i) => v !== selectedProviders[i]);
+    if (changed && prev.length > 0) {
+      setSelectedServices([]);
+      setSelectedAccounts([]);
+      setSelectedRegions([]);
+      setSelectedStatuses([]);
+      setSelectedClients([]);
+      setSelectedProjects([]);
+    }
+    prevProvidersRef.current = selectedProviders;
+  }, [selectedProviders]);
+
   const providers = useMemo(
     () => [...new Set(data.map((i) => i.provider || "N/A"))].sort(),
     [data],
   );
-  const services = useMemo(
-    () => [...new Set(providerFilteredData.map((i) => i.service))].sort(),
+  const regions = useMemo(
+    () =>
+      [
+        ...new Set(
+          providerFilteredData.map((i) => i.region || i.availabilityZone || "N/A"),
+        ),
+      ]
+        .filter((r) => r !== "N/A" && r.toLowerCase() !== "none")
+        .sort(),
     [providerFilteredData],
+  );
+  const regionFilteredData = useMemo(
+    () =>
+      selectedRegions.length === 0
+        ? providerFilteredData
+        : providerFilteredData.filter((i) =>
+            selectedRegions.includes(i.region || i.availabilityZone || "N/A"),
+          ),
+    [providerFilteredData, selectedRegions],
+  );
+  const services = useMemo(
+    () => [...new Set(regionFilteredData.map((i) => i.service))].sort(),
+    [regionFilteredData],
   );
   const accounts = useMemo(
-    () => [...new Set(providerFilteredData.map((i) => i.accountName))].sort(),
-    [providerFilteredData],
+    () => [...new Set(regionFilteredData.map((i) => i.accountName))].sort(),
+    [regionFilteredData],
   );
   const statuses = useMemo(
-    () => [...new Set(providerFilteredData.map((i) => i.status))].sort(),
-    [providerFilteredData],
+    () => [...new Set(regionFilteredData.map((i) => i.status))].sort(),
+    [regionFilteredData],
   );
   const clients = useMemo(
     () =>
       [
         ...new Set(
-          providerFilteredData
+          regionFilteredData
             .map((i) => i.tags?.cliente || i.tags?.Cliente)
             .filter(Boolean),
         ),
       ].sort(),
-    [providerFilteredData],
+    [regionFilteredData],
   );
   const projects = useMemo(
     () =>
       [
         ...new Set(
-          providerFilteredData
+          regionFilteredData
             .map((i) => i.tags?.proyecto || i.tags?.Proyecto)
             .filter(Boolean),
         ),
       ].sort(),
-    [providerFilteredData],
+    [regionFilteredData],
   );
 
   /* ── Filtered + sorted data ── */
@@ -228,6 +267,9 @@ export default function Home() {
         selectedAccounts.includes(item.accountName);
       const statusMatch =
         selectedStatuses.length === 0 || selectedStatuses.includes(item.status);
+      const regionMatch =
+        selectedRegions.length === 0 ||
+        selectedRegions.includes(item.region || item.availabilityZone || "N/A");
       const clientMatch =
         selectedClients.length === 0 ||
         selectedClients.includes(
@@ -246,6 +288,7 @@ export default function Home() {
         serviceMatch &&
         accountMatch &&
         statusMatch &&
+        regionMatch &&
         clientMatch &&
         projectMatch &&
         noTagsMatch
@@ -283,6 +326,7 @@ export default function Home() {
     selectedProjects,
     selectedAccounts,
     selectedStatuses,
+    selectedRegions,
     onlyWithoutTags,
     sortField,
     sortDirection,
@@ -305,6 +349,7 @@ export default function Home() {
     setSelectedProjects([]);
     setSelectedAccounts([]);
     setSelectedStatuses([]);
+    setSelectedRegions([]);
     setOnlyWithoutTags(false);
   };
 
@@ -315,6 +360,7 @@ export default function Home() {
     selectedProjects.length +
     selectedAccounts.length +
     selectedStatuses.length +
+    selectedRegions.length +
     (search ? 1 : 0) +
     (onlyWithoutTags ? 1 : 0);
 
@@ -497,6 +543,12 @@ export default function Home() {
                       values={providers}
                       selected={selectedProviders}
                       setSelected={setSelectedProviders}
+                    />
+                    <DropdownSection
+                      title="Región"
+                      values={regions}
+                      selected={selectedRegions}
+                      setSelected={setSelectedRegions}
                     />
                     <DropdownSection
                       title="Servicios"

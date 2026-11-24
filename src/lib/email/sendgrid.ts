@@ -41,11 +41,31 @@ export async function sendEmail(params: {
   subject: string;
   html: string;
   text?: string;
+  attachments?: { content: string; filename: string; type: string }[];
 }): Promise<{ success: boolean; messageId?: string }> {
   const config = await getSendGridConfig();
 
   if (params.to.length === 0) {
     throw new Error("Sin destinatarios: agrega correos en el módulo Informes o configura SENDGRID_RECIPIENTS");
+  }
+
+  const body: Record<string, unknown> = {
+    from: { email: config.senderEmail, name: "MC Inventory — Informes" },
+    personalizations: params.to.map((email) => ({ to: [{ email }] })),
+    subject: params.subject,
+    content: [
+      { type: "text/plain", value: params.text || "" },
+      { type: "text/html", value: params.html },
+    ],
+  };
+
+  if (params.attachments && params.attachments.length > 0) {
+    body.attachments = params.attachments.map(a => ({
+      content: a.content,
+      filename: a.filename,
+      type: a.type,
+      disposition: "attachment",
+    }));
   }
 
   const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
@@ -54,15 +74,7 @@ export async function sendEmail(params: {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      from: { email: config.senderEmail, name: "MC Inventory — Informes" },
-      personalizations: params.to.map((email) => ({ to: [{ email }] })),
-      subject: params.subject,
-      content: [
-        { type: "text/plain", value: params.text || "" },
-        { type: "text/html", value: params.html },
-      ],
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

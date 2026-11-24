@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/server";
 import { recordApiAudit } from "@/lib/audit/server";
 import { queryAudit } from "@/lib/db/pool";
@@ -10,15 +10,20 @@ import {
   normalizeEmail,
   removeRecipient,
   setRecipientActive,
+  type ReportType,
 } from "@/lib/email/recipients";
 import { getSenderEmail } from "@/lib/email/sendgrid";
 
 // GET: lista + origen efectivo + remitente + últimos envíos (requiere ver inventario)
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const guard = await requireApiSession("inventory:view", request);
   if (guard.response) return guard.response;
 
-  const [recipients, effective] = await Promise.all([listRecipients(), getEffectiveRecipients()]);
+  const reportType = (request.nextUrl.searchParams.get("reportType") || undefined) as ReportType | undefined;
+  const [recipients, effective] = await Promise.all([
+    listRecipients(reportType || null),
+    getEffectiveRecipients(reportType),
+  ]);
   const sender = await getSenderEmail().catch(() => "");
 
   let recentSends: Array<{ sentAt: string; status: string; details: unknown }> = [];
@@ -42,38 +47,40 @@ export async function GET(request: Request) {
   });
 }
 
-// POST: agregar { email, name? } (requiere modificar inventario)
-export async function POST(request: Request) {
+// POST: agregar { email, name?, reportType? } (requiere modificar inventario)
+export async function POST(request: NextRequest) {
   const startedAt = Date.now();
   const guard = await requireApiSession("inventory:modify", request);
   if (guard.response) return guard.response;
 
   let email = "";
   let name = "";
+  let reportType: ReportType | null | undefined = undefined;
   try {
     const body = await request.json();
     email = normalizeEmail(String(body?.email || ""));
     name = String(body?.name || "");
+    reportType = body?.reportType || null;
   } catch {}
 
   if (!isValidEmail(email)) {
     return NextResponse.json({ error: "Correo inválido" }, { status: 400 });
   }
 
-  const recipient = await addRecipient(email, name, guard.session?.user?.email || "unknown");
+  const recipient = await addRecipient(email, name, guard.session?.user?.email || "unknown", reportType);
   await recordApiAudit(request, guard.session, {
     action: "informes.recipient.add",
     category: "configuration",
     result: "success",
     statusCode: 201,
     startedAt,
-    metadata: { email: recipient.email },
+    metadata: { email: recipient.email, reportType: recipient.reportType },
   });
   return NextResponse.json({ recipient }, { status: 201 });
 }
 
 // PATCH: activar/desactivar { id, active }
-export async function PATCH(request: Request) {
+export async function PATCH(request: NextRequest) {
   const startedAt = Date.now();
   const guard = await requireApiSession("inventory:modify", request);
   if (guard.response) return guard.response;
@@ -102,12 +109,12 @@ export async function PATCH(request: Request) {
 }
 
 // DELETE: ?id= — eliminar
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   const startedAt = Date.now();
   const guard = await requireApiSession("inventory:modify", request);
   if (guard.response) return guard.response;
 
-  const id = new URL(request.url).searchParams.get("id") || "";
+  const id = request.nextUrl.searchParams.get("id") || "";
   if (!id) return NextResponse.json({ error: "id requerido" }, { status: 400 });
 
   const removed = await removeRecipient(id);

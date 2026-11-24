@@ -134,13 +134,28 @@ export async function getAWSRDSInventory(
             operatingSystem:
               db.Engine || "N/A",
 
+            engine:
+              db.Engine || undefined,
+
+            engineVersion:
+              db.EngineVersion || undefined,
+
             id,
+
+            availabilityZone:
+              db.AvailabilityZone || undefined,
+
+            region:
+              account.region,
 
             host:
               db.Endpoint?.Address || "N/A",
 
             status:
               db.DBInstanceStatus || "UNKNOWN",
+
+            clusterId:
+              db.DBClusterIdentifier || undefined,
 
             securityGroups:
 

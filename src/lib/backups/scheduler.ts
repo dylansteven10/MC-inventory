@@ -8,7 +8,7 @@ declare global {
 // Los backups se generan entre 22:00 y 04:00 (hora Colombia). El refresco
 // diario corre después de esa ventana. Todo se almacena en UTC y se
 // presenta en America/Bogota.
-export function getBogotaNow(): { hour: number; day: string } {
+export function getBogotaNow(): { hour: number; day: string; dow: number } {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Bogota",
@@ -16,10 +16,12 @@ export function getBogotaNow(): { hour: number; day: string } {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
+    weekday: "short",
     hour12: false,
   }).formatToParts(now);
   const get = (type: string) => parts.find((p) => p.type === type)?.value || "";
-  return { hour: Number(get("hour")) % 24, day: `${get("year")}-${get("month")}-${get("day")}` };
+  const weekdayMap: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+  return { hour: Number(get("hour")) % 24, day: `${get("year")}-${get("month")}-${get("day")}`, dow: weekdayMap[get("weekday")] || 0 };
 }
 
 export function getRefreshHourBogota(): number {
